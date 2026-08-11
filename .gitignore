@@ -1,0 +1,15 @@
+data/
+*.db
+*.db-wal
+*.db-shm
+*.tmp
+__pycache__/
+
+# Ambiente virtual criado por `uv sync`
+.venv/
+
+# Build estático do MkDocs (`mkdocs build`)
+site/
+
+# Logs de execução (ver docs/guias/logging_padrao.md)
+logs/

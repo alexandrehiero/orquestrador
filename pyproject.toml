@@ -1,0 +1,21 @@
+[project]
+name = "orquestrador"
+version = "0.1.0"
+description = "Coleta de processos do TJSP (portal e-SAJ) e montagem de Data Lake em JSONL"
+readme = "docs/index.md"
+requires-python = ">=3.11"
+
+dependencies = [
+    # Imita a impressão digital TLS de um navegador real (src/scrapers/esaj_client.py).
+    "curl-cffi>=0.6",
+    # Parsing do HTML das capas (page_state, parsers, spike_seletores).
+    "beautifulsoup4>=4.12",
+    # Barra de progresso em coletas longas (scripts/menu.py).
+    "tqdm>=4.66",
+]
+
+[dependency-groups]
+docs = [
+    "mkdocs>=1.6",
+    "mkdocs-material>=9.5",
+]
