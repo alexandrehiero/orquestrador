@@ -95,4 +95,7 @@ nav:
   - Notebooks:
       - Template de ADR de notebook: notebooks/template_notebook.md
 
-  - Backlog técnico: backlog.md
+  - Backlog:
+      - Dívidas em aberto: backlog.md
+      - Invariantes de teste: backlog_testes.md
+      - Itens encerrados: backlog_encerrado.md

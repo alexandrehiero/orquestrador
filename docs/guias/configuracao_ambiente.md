@@ -136,21 +136,12 @@ projeto e o mapa dos módulos.
 
 ## Documentando seu trabalho
 
-Ao criar um novo artefato, copie o template ADR correspondente:
+Copie o template ADR correspondente ao artefato, registre a página no `nav` do `mkdocs.yml`
+e abra PR com código e documentação juntos. **Toda página cabe em 150 linhas** — as regras
+que tornam isso viável estão em [Como documentar](../index.md#como-documentar).
 
-| Tipo | Template | Destino |
-|------|----------|---------|
-| Módulo `src/` | [`docs/src/template_src.md`](../src/template_src.md) | `docs/src/<caminho>/<nome>.md` |
-| Script | [`docs/scripts/template_script.md`](../scripts/template_script.md) | `docs/scripts/<nome>.md` |
-| Notebook | [`docs/notebooks/template_notebook.md`](../notebooks/template_notebook.md) | `docs/notebooks/<nome>.md` |
-
-A estrutura de `docs/src/` e `docs/scripts/` **espelha** a de `src/` e `scripts/`: cada
-`.py` tem um `.md` de mesmo nome no caminho equivalente. `__init__.py` vazios não são
-documentados.
-
-Registre a nova página no `nav` do `mkdocs.yml` (raiz do repositório) e abra PR com código +
-ADR juntos. Pontos ambíguos ou que pareçam defeito vão para a seção **Pontos em aberto** da
-página e depois para o [backlog](../backlog.md).
+Pontos ambíguos ou que pareçam defeito vão direto para o [backlog](../backlog.md);
+invariantes que valeria testar, para o [backlog de testes](../backlog_testes.md).
 
 ## Referências
 
