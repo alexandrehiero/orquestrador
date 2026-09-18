@@ -63,23 +63,19 @@ except KeyboardInterrupt:
 
 ## Barra de progresso: use `tqdm.write`
 
-Dentro de um laço com barra de progresso, `print()` corrompe a linha da barra. Toda saída
-precisa passar por `tqdm.write`:
+Dentro de um laço com barra de progresso, `print()` corrompe a linha da barra. Toda saída precisa passar por `tqdm.write`:
 
 ```python
 tqdm.write(f"[{r.status}] {numero} (grau {r.grau})")
 ```
 
-É por isso que as funções de `src/` que reportam progresso recebem o logger por parâmetro,
-com `log=print` como padrão — assim elas não dependem do `tqdm`, e quem chama de dentro de
-uma barra injeta o escritor correto:
+É por isso que as funções de `src/` que reportam progresso recebem o logger por parâmetro, com `log=print` como padrão — assim elas não dependem do `tqdm`, e quem chama de dentro de uma barra injeta o escritor correto:
 
 ```python
 resumo = exportar_jsonl(store, JSONL, log=tqdm.write)
 ```
 
-Ao migrar para `logging`, o mesmo cuidado vale: um `StreamHandler` comum escreve direto no
-stderr e quebra a barra. A solução é um handler que delegue a `tqdm.write`.
+Ao migrar para `logging`, o mesmo cuidado vale: um `StreamHandler` comum escreve direto no stderr e quebra a barra. A solução é um handler que delegue a `tqdm.write`.
 
 ## Diretório `logs/`
 

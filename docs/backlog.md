@@ -7,12 +7,9 @@
 | Responsável(is)     | @alexandrehiero                            |
 | Cobertura atual     | todo o `src/` (13 módulos) e `scripts/`    |
 
-Dívidas estruturais, riscos não confirmados e verificações ausentes levantados pelos ADRs.
-Cada item nasce de uma página, que guarda o contexto completo; aqui fica o enunciado, a
-evidência no código e o efeito hoje.
+Dívidas estruturais, riscos não confirmados e verificações ausentes levantados pelos ADRs. Cada item nasce de uma página, que guarda o contexto completo; aqui fica o enunciado, a evidência no código e o efeito hoje.
 
-**Nada nesta lista é bug conhecido.** Onde um item já produz comportamento errado, isso
-está dito.
+**Nada nesta lista é bug conhecido.** Onde um item já produz comportamento errado, isso está dito.
 
 Páginas irmãs: [invariantes de teste](backlog_testes.md) · [itens encerrados](backlog_encerrado.md).
 
@@ -20,14 +17,11 @@ Páginas irmãs: [invariantes de teste](backlog_testes.md) · [itens encerrados]
 
 - **Efeito hoje** — o que já acontece, não o que poderia acontecer.
 - **Risco** — o que muda se a premissa do item deixar de valer.
-- Um item sai daqui quando o código muda: a página de origem passa a registrar a decisão e
-  a linha migra para [itens encerrados](backlog_encerrado.md).
+- Um item sai daqui quando o código muda: a página de origem passa a registrar a decisão e a linha migra para [itens encerrados](backlog_encerrado.md).
 
 ## 1. Duplicação de utilitários
 
-Cinco utilitários com mais de uma implementação. Nenhum diverge hoje — todas as cópias foram
-conferidas e são equivalentes —, e é justamente por isso que a divergência futura seria
-silenciosa.
+Cinco utilitários com mais de uma implementação. Nenhum diverge hoje — todas as cópias foram conferidas e são equivalentes —, e é justamente por isso que a divergência futura seria silenciosa.
 
 | Item | Onde | Efeito hoje | Risco |
 |---|---|---|---|
@@ -37,8 +31,7 @@ silenciosa.
 | Formatação da máscara CNJ | `NumeroProcesso.mascara` (`numero_processo.py:109`) e `projecao._mascara` (`projecao.py:29`) | Nenhum | A da projeção opera sobre string de 20 dígitos e não passa pelo value object — divergências de formatação não seriam detectadas por nada |
 | `_norm` (minúsculas, sem acento, espaços colapsados) | Idêntico em `page_state.py:27` e `parser_base.py:28`; `limpeza._chave_dedup` faz quase o mesmo com `casefold()` no lugar de `lower()` | Nenhum | Comparações precisam concordar entre módulos para casar; a variante com `casefold()` já é uma terceira semântica |
 
-**Origem:** [`page_state`](src/scrapers/page_state.md), [`parser_base`](src/scrapers/parser_base.md),
-[`parser_segundo_grau`](src/scrapers/parser_segundo_grau.md), [`numero_processo`](src/scrapers/numero_processo.md).
+**Origem:** [`page_state`](src/scrapers/page_state.md), [`parser_base`](src/scrapers/parser_base.md), [`parser_segundo_grau`](src/scrapers/parser_segundo_grau.md), [`numero_processo`](src/scrapers/numero_processo.md).
 
 ## 2. Verificações ausentes ou incompletas
 
@@ -53,9 +46,7 @@ silenciosa.
 | Ramo "capa de 2º grau sem 1ª instância" sem cobertura | `vinculo.py:98` | As duas capas de `cposg` em `data/spike/` têm `processo_1a_instancia`; o `elif` nunca é exercitado | A observação que denunciaria uma quebra de seletor nunca foi vista sendo escrita |
 | A reprojeção de vínculo não reescreve `bruto["observacoes"]` | `SqliteStore.reprojetar_vinculos` atualiza três colunas; as observações foram anexadas ao bruto pelo `menu` na coleta | Um registro antigo sai da base final com `relacionamento.tipo` novo e observação de vínculo velha | Mensagem reescrita ou observação nova não alcança o já coletado. A divergência é silenciosa: os dois campos são plausíveis lado a lado |
 
-**Origem:** [`parser_base`](src/scrapers/parser_base.md), [`page_state`](src/scrapers/page_state.md),
-[`status`](src/status.md), [`sqlite_store`](src/store/sqlite_store.md),
-[`vinculo`](src/transformers/vinculo.md), [`projecao`](src/transformers/projecao.md).
+**Origem:** [`parser_base`](src/scrapers/parser_base.md), [`page_state`](src/scrapers/page_state.md), [`status`](src/status.md), [`sqlite_store`](src/store/sqlite_store.md), [`vinculo`](src/transformers/vinculo.md), [`projecao`](src/transformers/projecao.md).
 
 ## 3. Seletores e premissas sobre o HTML do portal
 
@@ -67,8 +58,7 @@ silenciosa.
 | `_FRASES_NAO_ENCONTRADO` é lista fechada de três frases | `page_state.py:64` | Correto para as três redações conhecidas | Se o e-SAJ mudar o texto, todo processo inexistente vira `DESCONHECIDO` → `erro_transitorio` → `erro_persistente`. A base não fica errada; a fila de falhas cresce sem explicação óbvia |
 | `SELETORES_SITUACAO` e `ROTULOS_DISTRIBUICAO` são listas fechadas | `parser_base.py:75` e `:78` | Dois seletores de situação confirmados no spike; `.unj-badge` e `.tag` nunca observados | Selo ou rótulo **novo** produz campo vazio, não erro — e campo vazio não dispara nenhuma bandeira de `completude` |
 
-**Origem:** [`parser_segundo_grau`](src/scrapers/parser_segundo_grau.md),
-[`page_state`](src/scrapers/page_state.md), [`parser_base`](src/scrapers/parser_base.md).
+**Origem:** [`parser_segundo_grau`](src/scrapers/parser_segundo_grau.md), [`page_state`](src/scrapers/page_state.md), [`parser_base`](src/scrapers/parser_base.md).
 
 ## 4. Pontos cegos operacionais
 
@@ -83,9 +73,7 @@ silenciosa.
 | A reprojeção de vínculo varre a base inteira a cada opção 4 | `SqliteStore.reprojetar_vinculos`, em lotes de 500 | Toda opção 4 lê e desserializa todos os `bruto` gravados, mesmo quando nada muda | Numa base de centenas de milhares de registros é o custo dominante do export local |
 | A primeira reprojeção altera registros de erro já publicados | `reprojetar_vinculos` não filtra por status; linhas de erro têm `bruto` nulo | `tipo_vinculo` desses registros passa de `NULL` a `indefinido`; em `erro_persistente`, que é exportável, o `relacionamento.tipo` da base final deixa de ser `null` | É coerente com o critério, mas muda valor em base já entregue, sem que nada no JSONL registre a mudança |
 
-**Origem:** [`esaj_client`](src/scrapers/esaj_client.md), [`coletor`](src/scrapers/coletor.md),
-[`page_state`](src/scrapers/page_state.md), [`vinculo`](src/transformers/vinculo.md),
-[`exportador`](src/aggregators/exportador.md).
+**Origem:** [`esaj_client`](src/scrapers/esaj_client.md), [`coletor`](src/scrapers/coletor.md), [`page_state`](src/scrapers/page_state.md), [`vinculo`](src/transformers/vinculo.md), [`exportador`](src/aggregators/exportador.md).
 
 ## 5. Operação dos scripts
 
@@ -104,16 +92,11 @@ Nenhum impede a operação hoje; todos são armadilhas para quem for estender ou
 
 ## 6. Ausência de testes
 
-Não há suíte automatizada no repositório. O obstáculo não é técnico: `page_state`,
-`parser_base` e `coletor` são funções puras sobre string, e `scripts/spike_seletores.py`
-**já produz os fixtures** — os arquivos `data/spike/<numero>_g<grau>.html` são HTML real.
+Não há suíte automatizada no repositório. O obstáculo não é técnico: `page_state`, `parser_base` e `coletor` são funções puras sobre string, e `scripts/spike_seletores.py` **já produz os fixtures** — os arquivos `data/spike/<numero>_g<grau>.html` são HTML real.
 
-O que existe é `scripts/checar_offline.py`, que reprocessa esses HTMLs sem nenhuma
-requisição e imprime o resultado para leitura humana. **Não é teste:** sem asserção, sem
-runner, sem veredito passa/falha.
+O que existe é `scripts/checar_offline.py`, que reprocessa esses HTMLs sem nenhuma requisição e imprime o resultado para leitura humana. **Não é teste:** sem asserção, sem runner, sem veredito passa/falha.
 
-As 91 invariantes que valeria fixar, com a ordem sugerida, estão em
-[backlog de testes](backlog_testes.md).
+As 91 invariantes que valeria fixar, com a ordem sugerida, estão em [backlog de testes](backlog_testes.md).
 
 ## Histórico de Modificações
 

@@ -4,7 +4,7 @@ Coleta de processos judiciais do Tribunal de Justiça de São Paulo pelo portal 
 
 Projeto de Iniciação Científica (FAPESP) do **CeMEPI-PGE / FEA-RP-USP**.
 
-Esta documentação é escrita para quem vai **reproduzir ou estender** o trabalho. Ela segue o formato de **ADRs** (*Architecture Decision Records*): cada página registra por que uma decisão foi tomada, qual alternativa foi descartada e o que ainda não está resolvido.
+Esta documentação é escrita para quem vai **reproduzir ou estender** o trabalho. Ela segue o formato de **ADRs** (*Architecture Decision Records*: cada página registra por que uma decisão foi tomada, qual alternativa foi descartada e o que ainda não está resolvido.
 
 ## O problema
 
@@ -18,7 +18,7 @@ Ela aparece na taxonomia de status, na decisão de avançar de grau, na conferê
 
 ## Como funciona
 
-Um menu interativo com quatro operações. O fluxo recomendado é **1 → 4 → 3 → 4**.
+Um menu interativo com quatro operações. O fluxo recomendado é **1 → 4 → 3 (opcional) → 4**.
 
 ```
 data/entrada/<projeto>.txt
@@ -47,6 +47,10 @@ data/entrada/<projeto>.txt
 | 4 | Reprojeta vínculos, exporta o JSONL e recalcula os órfãos | **Não** |
 
 O ciclo 4 → 3 → 4 fecha o grafo de relacionamento e **converge**: um processo que o e-SAJ afirma não existir sai da lista de órfãos para sempre. Detalhes de operação em [`menu`](scripts/menu.md).
+
+![alt text](<Diagrama 1.png>) 
+![alt text](<Diagrama 2.png>) 
+![alt text](<Diagrama 3.png>)
 
 ## As decisões que sustentam o projeto
 
@@ -99,8 +103,6 @@ Para entender o pipeline lendo código, comece por [`status`](src/status.md) e [
 
 ## Como documentar
 
-**Toda página cabe em 150 linhas.** É o teto do projeto, e ele existe porque documentação que ninguém termina de ler não documenta nada. O que o mantém viável:
-
 - **Não copie código para a página.** Referencie o arquivo e o símbolo. O código está no repositório, e uma segunda cópia diverge em silêncio — a mesma falha que [`status`](src/status.md) existe para impedir.
 - **"Decisões de Arquitetura" é lista de tópicos,** um por decisão, no padrão `- **Afirmação** — por quê; consequência.`
 - **A tabela "Alternativas Consideradas" é a forma densa do porquê.** Preserve-a: é ali que a decisão fica defensável.
@@ -116,7 +118,7 @@ Ao criar um artefato novo, copie o template e preencha **todas** as seções:
 
 A estrutura de `docs/src/` e `docs/scripts/` **espelha** a de `src/` e `scripts/`. `__init__.py` vazios não são documentados.
 
-Quando algo no código estiver ambíguo ou parecer defeito, registre direto no [backlog](backlog.md), com a evidência, em vez de adivinhar a intenção — as páginas não têm mais seção "Pontos em aberto", para que a dívida tenha um lugar só. Invariantes que valeria testar vão para o [backlog de testes](backlog_testes.md).
+Quando algo no código estiver ambíguo ou parecer defeito, registre direto no [backlog](backlog.md), com a evidência, em vez de adivinhar a intenção, as páginas não têm mais seção "Pontos em aberto", para que a dívida tenha um lugar só. Invariantes que valeria testar vão para o [backlog de testes](backlog_testes.md).
 
 Registre a nova página no `nav` do `mkdocs.yml` e abra PR com código e documentação juntos.
 

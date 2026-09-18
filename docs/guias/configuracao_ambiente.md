@@ -44,14 +44,11 @@ uv run python
 uv run python -m src.scrapers.numero_processo
 ```
 
-O `<nome_do_projeto>` determina **todos** os caminhos de entrada e saída — um projeto é uma
-lista, um banco e uma pasta de saída. Bases diferentes com processos em comum não
-interferem uma na outra. Ver [`scripts/menu`](../scripts/menu.md).
+O `<nome_do_projeto>` determina **todos** os caminhos de entrada e saída — um projeto é uma lista, um banco e uma pasta de saída. Bases diferentes com processos em comum não interferem uma na outra. Ver [`scripts/menu`](../scripts/menu.md).
 
 ## Dados locais
 
-Coloque os dados em `data/`. Nem tudo ali é ignorado pelo Git: a **lista de entrada é
-versionada**, e apenas as saídas, os bancos e os temporários ficam de fora
+Coloque os dados em `data/`. Nem tudo ali é ignorado pelo Git: a **lista de entrada é versionada**, e apenas as saídas, os bancos e os temporários ficam de fora
 (`data/saida/`, `data/spike/`, `*.db`, `*.tmp`).
 
 | Caminho | Uso | Versionado? |
@@ -66,8 +63,7 @@ versionada**, e apenas as saídas, os bancos e os temporários ficam de fora
 | `data/saida/<projeto>/numeros_invalidos.txt` | Números rejeitados na leitura, com o motivo | Não |
 | `data/spike/<numero>_g<grau>.html` | HTML salvo pelo diagnóstico de seletores | Não |
 
-Os arquivos de `data/saida/` são **visões regeneradas** a cada execução — o banco é a fonte
-da verdade. Apagar qualquer um deles não perde trabalho.
+Os arquivos de `data/saida/` são **visões regeneradas** a cada execução — o banco é a fonte da verdade. Apagar qualquer um deles não perde trabalho.
 
 ## Variáveis de ambiente
 
@@ -76,10 +72,7 @@ da verdade. Apagar qualquer um deles não perde trabalho.
 | `ORQUESTRADOR_DB_DIR` | `data/bancos` | Diretório dos bancos SQLite |
 | `ORQUESTRADOR_WORKERS` | `3` | Threads de coleta |
 
-**O banco não pode ficar em pasta sincronizada.** Clientes de sincronização (OneDrive,
-Google Drive, Dropbox) copiam o `.db` e o `-wal` em momentos diferentes e produzem um banco
-incoerente **sem emitir erro** — semanas de coleta perdidas em silêncio. O projeto detecta
-isso e se recusa a abrir:
+**O banco não pode ficar em pasta sincronizada.** Clientes de sincronização (OneDrive, Google Drive, Dropbox) copiam o `.db` e o `-wal` em momentos diferentes e produzem um banco incoerente **sem emitir erro** — semanas de coleta perdidas em silêncio. O projeto detecta isso e se recusa a abrir:
 
 ```bash
 # PowerShell
@@ -89,9 +82,7 @@ $env:ORQUESTRADOR_DB_DIR = 'C:\dados_coleta'
 export ORQUESTRADOR_DB_DIR=/home/voce/dados_coleta
 ```
 
-Aumentar `ORQUESTRADOR_WORKERS` **não** acelera a coleta: a cadência é global (uma
-requisição a cada 1,7–2,5s, com ou sem workers). Os workers só evitam que um pico de
-latência numa página deixe a fila ociosa. Ver
+Aumentar `ORQUESTRADOR_WORKERS` **não** acelera a coleta: a cadência é global (uma requisição a cada 1,7–2,5s, com ou sem workers). Os workers só evitam que um pico de latência numa página deixe a fila ociosa. Ver
 [`src/scrapers/esaj_client`](../src/scrapers/esaj_client.md).
 
 ## Adicionando dependências
@@ -107,8 +98,7 @@ uv add --dev pytest
 uv add "beautifulsoup4>=4.12"
 ```
 
-Sempre use `uv add` em vez de `pip install` direto — isso mantém `pyproject.toml` e
-`uv.lock` sincronizados.
+Sempre use `uv add` em vez de `pip install` direto — isso mantém `pyproject.toml` e `uv.lock` sincronizados.
 
 As dependências de execução do projeto são poucas e cada uma tem um motivo registrado:
 
@@ -131,17 +121,13 @@ uv run mkdocs build --strict
 Use sempre `--strict` antes de abrir PR: ele promove link quebrado a erro, em vez de
 aviso.
 
-A documentação fica em `docs/`. Veja a [página inicial](../index.md) para a visão geral do
-projeto e o mapa dos módulos.
+A documentação fica em `docs/`. Veja a [página inicial](../index.md) para a visão geral do projeto e o mapa dos módulos.
 
 ## Documentando seu trabalho
 
-Copie o template ADR correspondente ao artefato, registre a página no `nav` do `mkdocs.yml`
-e abra PR com código e documentação juntos. **Toda página cabe em 150 linhas** — as regras
-que tornam isso viável estão em [Como documentar](../index.md#como-documentar).
+Copie o template ADR correspondente ao artefato, registre a página no `nav` do `mkdocs.yml` e abra PR com código e documentação juntos. **Toda página cabe em 150 linhas** — as regras que tornam isso viável estão em [Como documentar](../index.md#como-documentar).
 
-Pontos ambíguos ou que pareçam defeito vão direto para o [backlog](../backlog.md);
-invariantes que valeria testar, para o [backlog de testes](../backlog_testes.md).
+Pontos ambíguos ou que pareçam defeito vão direto para o [backlog](../backlog.md); invariantes que valeria testar, para o [backlog de testes](../backlog_testes.md).
 
 ## Referências
 

@@ -7,8 +7,7 @@
 | Responsável(is)     | @alexandrehiero                            |
 | Origem              | seção "Itens encerrados" de [backlog.md](backlog.md) |
 
-Registro do que já foi resolvido, para não voltar como "descoberta nova". O contexto
-completo — com a alternativa descartada — está na página de origem de cada item.
+Registro do que já foi resolvido, para não voltar como "descoberta nova". O contexto completo — com a alternativa descartada — está na página de origem de cada item.
 
 Um item chega aqui quando o código muda e a página de origem passa a registrar a decisão.
 

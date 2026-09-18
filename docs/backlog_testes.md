@@ -7,8 +7,7 @@
 | Responsável(is)     | @alexandrehiero                            |
 | Origem              | seção "Testes e Validação" dos 14 ADRs de `src/` |
 
-Lista única das invariantes que valeria fixar em teste. Cada uma nasceu de um ADR, ao
-documentar o módulo, e continua ligada a ele pela coluna **Módulo**.
+Lista única das invariantes que valeria fixar em teste. Cada uma nasceu de um ADR, ao documentar o módulo, e continua ligada a ele pela coluna **Módulo**.
 
 **Nenhuma delas é bug conhecido.** São afirmações que o código faz hoje e que nada verifica.
 
@@ -16,16 +15,10 @@ documentar o módulo, e continua ligada a ele pela coluna **Módulo**.
 
 Não há suíte automatizada no repositório. Existem duas coisas próximas:
 
-- `scripts/checar_offline.py` reprocessa os HTMLs de
-  `data/spike/` **sem nenhuma requisição** e imprime estado, identidade, campos e vínculo de
-  cada capa. Não há asserção nem veredito: a saída é lida por uma pessoa. Cobre
-  `page_state`, `numero_processo`, os dois parsers e `vinculo`; **não** cobre `sqlite_store`,
-  `exportador`, `projecao`, `limpeza` nem `coletar_um`.
-- A validação operacional do [`menu`](scripts/menu.md): contagem por status impressa ao fim
-  de cada execução, e `falhas_pendentes.txt` / `revisao_manual.txt` regenerados do banco.
+- `scripts/checar_offline.py` reprocessa os HTMLs de `data/spike/` **sem nenhuma requisição** e imprime estado, identidade, campos e vínculo de cada capa. Não há asserção nem veredito: a saída é lida por uma pessoa. Cobre `page_state`, `numero_processo`, os dois parsers e `vinculo`; **não** cobre `sqlite_store`, `exportador`, `projecao`, `limpeza` nem `coletar_um`.
+- A validação operacional do [`menu`](scripts/menu.md): contagem por status impressa ao fim de cada execução, e `falhas_pendentes.txt` / `revisao_manual.txt` regenerados do banco.
 
-Os fixtures já existem: os 14 arquivos `data/spike/<numero>_g<grau>.html` são HTML real do
-e-SAJ, e a maior parte da camada de análise é composta de funções puras sobre string.
+Os fixtures já existem: os 14 arquivos `data/spike/<numero>_g<grau>.html` são HTML real do e-SAJ, e a maior parte da camada de análise é composta de funções puras sobre string.
 
 ## Ordem sugerida
 
