@@ -82,7 +82,7 @@ $env:ORQUESTRADOR_DB_DIR = 'C:\dados_coleta'
 export ORQUESTRADOR_DB_DIR=/home/voce/dados_coleta
 ```
 
-Aumentar `ORQUESTRADOR_WORKERS` **não** acelera a coleta: a cadência é global (uma requisição a cada 1,7–2,5s, com ou sem workers). Os workers só evitam que um pico de latência numa página deixe a fila ociosa. Ver
+Aumentar `ORQUESTRADOR_WORKERS` **não** acelera a coleta: a cadência é global (uma requisição a cada 1,1–1,6 s, com ou sem workers; só os "Mais" das movimentações ficam fora dela). Os workers só evitam que um pico de latência numa página deixe a fila ociosa. Ver
 [`src/scrapers/esaj_client`](../src/scrapers/esaj_client.md).
 
 ## Adicionando dependências

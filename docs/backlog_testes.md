@@ -3,7 +3,7 @@
 | Metadado            | Valor                                      |
 |---------------------|--------------------------------------------|
 | Data de criação     | 2026-09-04                                 |
-| Data de atualização | 2026-09-04                                 |
+| Data de atualização | 2026-09-21                                 |
 | Responsável(is)     | @alexandrehiero                            |
 | Origem              | seção "Testes e Validação" dos 14 ADRs de `src/` |
 
@@ -46,6 +46,9 @@ Por relação risco/custo, conforme as próprias páginas de origem:
 | `coletor` | Capa com identidade divergente devolve `erro_transitorio` e os CNJs achados aparecem no motivo |
 | `coletor` | Capa com movimentações e sem partes devolve `erro_transitorio`, não `coletado` |
 | `coletor` | `EsajIndisponivelError` do dublê **propaga** para fora, em vez de virar `erro_transitorio` |
+| `coletor` | Recusa em qualquer página, 1ª página sem tabela ou cursor repetido devolvem `erro_transitorio` — **nunca** `coletado` com lista parcial |
+| `coletor` | Três páginas do dublê produzem as movimentações na ordem das páginas, sem a linha oculta do cursor |
+| `esaj_client` | `carregar_movimentacoes` com cursor (o "Mais") **não** chama `Pacer.aguardar`; sem cursor (o "Exibir"), chama |
 | `esaj_client` | `Pacer.aguardar()` em sequência produz intervalos dentro de `[minimo, maximo]` |
 | `esaj_client` | Após ociosidade longa, a chamada seguinte não dispara mais de um slot (`max(agora, _proximo)`) |
 | `esaj_client` | `MonitorFalhas` abre no `limite`-ésimo `falha()` consecutivo; um `sucesso()` intercalado zera |
@@ -103,7 +106,8 @@ Por relação risco/custo, conforme as próprias páginas de origem:
 | `limpeza` | Toda função devolve `None` — nunca `''` — para entrada vazia ou não convertível |
 | `limpeza` | `limpar_classe` resolve parênteses aninhados e múltiplos numa passada |
 | `limpeza` | `dedup_nomes` preserva a grafia da **primeira** aparição e mantém a ordem |
-| `limpeza` | `dedup_movimentacoes` ordena por data crescente, com as datas `None` **no fim** |
+| `limpeza` | `dedup_movimentacoes` preserva a ordem de entrada (a do e-SAJ) e só junta data, título e complemento idênticos |
+| `limpeza` | `moeda_do_valor`: `'R$ 4.832,96'` → `'R$'`; `'1.000,00'` → `'R$'` (padrão); `None` → `None` |
 | `limpeza` | `valor_para_float(3724.16)` devolve `3724.16` — idempotência sobre valor já convertido |
 | `limpeza` | Um valor com centavos vence um ano que apareça **antes** dele — a razão dos dois passos |
 | `vinculo` | Auto-referência no link do topo devolve `indefinido` com observação |
@@ -140,3 +144,4 @@ Por relação risco/custo, conforme as próprias páginas de origem:
 | Data | Usuário | Alteração |
 |------|---------|------------|
 | 2026-09-04 | @alexandrehiero | Criação: consolidação das 89 invariantes antes dispersas na seção "Testes e Validação" dos 14 ADRs de `src/` |
+| 2026-09-21 | @alexandrehiero | Layout novo do e-SAJ e moeda: 4 invariantes novas (`coletor` ×2, `esaj_client`, `limpeza`); a de `dedup_movimentacoes` reescrita — total 96 |

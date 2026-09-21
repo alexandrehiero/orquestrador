@@ -3,7 +3,7 @@
 | Metadado            | Valor                                      |
 |---------------------|--------------------------------------------|
 | Data de criação     | 2026-08-10                                 |
-| Data de atualização | 2026-09-04                                 |
+| Data de atualização | 2026-09-21                                 |
 | Responsável(is)     | @alexandrehiero                            |
 | Dependências principais | `beautifulsoup4`, e os módulos de `src/scrapers/` |
 
@@ -46,7 +46,7 @@ Os argumentos são separados **por forma, não por posição**: qualquer argumen
 | `SELETORES_SITUACAO` | importado de `src.scrapers.parser_base` | Lista auditada pelo relatório de situação |
 | `ROTULOS_DISTRIBUICAO` | importado de `src.scrapers.parser_base` | Rótulos auditados pelo relatório de distribuição |
 
-O `EsajClient` é criado sem argumentos, portanto com os padrões: cadência de 1,7–2,5 s, 3 tentativas e circuito em 20 falhas consecutivas. Como o spike é monothread, ele monta o próprio `Pacer` e o próprio `MonitorFalhas`.
+O `EsajClient` é criado sem argumentos, portanto com os padrões: cadência de 1,1–1,6 s, 3 tentativas e circuito em 20 falhas consecutivas. Como o spike é monothread, ele monta o próprio `Pacer` e o próprio `MonitorFalhas`.
 
 ## Logs e Monitoramento
 
@@ -62,6 +62,7 @@ O fechamento imprime `client.estatisticas()`, o que permite conferir requisiçõ
 - **Processo sigiloso ou inexistente no grau consultado.** Imprime só o estado; não há capa a diagnosticar.
 - **O e-SAJ está fora do ar.** `EsajError` é capturada por grau e o script segue. Se o circuito abrir, `EsajIndisponivelError` **não** é `EsajError` e cai no `except Exception` do laço principal, encerrando o diagnóstico daquele número.
 - **O projeto padrão é `processos`, que não existe no repositório** (a entrada versionada é `teste1.txt`), e a docstring do módulo ainda documenta a forma antiga enquanto a de `main()` descreve a nova. Benigno, mas o arquivo diz duas coisas sobre si mesmo. Ver [backlog §5](../backlog.md).
+- **No layout novo do e-SAJ (set/2026), `[parse]` mostra 0 movimentações.** O clique em "Exibir movimentações" mora em `coletar_um`, que o spike não chama; a capa sozinha só traz o botão. Para conferir as movimentações, use a coleta. Ver [backlog §5](../backlog.md).
 - **Um nome de projeto com 20 dígitos seria lido como número.** `coleta_20240101_20241231_v2` cairia na lista de números. Improvável e visível na hora, mas a heurística não tem escape explícito. Ver [backlog §5](../backlog.md).
 
 ## Decisões Futuras
@@ -100,3 +101,4 @@ Não importa nada de `store/`, `transformers/` nem `aggregators/` — o spike pa
 |------|---------|------------|
 | 2026-08-11 | @alexandrehiero | Criação |
 | 2026-09-04 | @alexandrehiero | Reescrita enxuta (≤150 linhas): narrativa das 8 decisões virou lista de tópicos; código copiado removido; "Pontos em aberto" migrou para o backlog |
+| 2026-09-21 | @alexandrehiero | Cadência padrão 1,1–1,6 s; limitação do layout novo: o spike não clica em "Exibir movimentações" |

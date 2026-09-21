@@ -62,7 +62,8 @@ O ciclo 4 → 3 → 4 fecha o grafo de relacionamento e **converge**: um process
 | **Invariante de identidade** | Entrar no processo errado grava dados de um sob o número de outro, e nada detecta | [`page_state`](src/scrapers/page_state.md) |
 | **Taxonomia de status** | Distinguir "sei que não existe" de "não consegui perguntar" é o que faz a fila de falhas esvaziar | [`status`](src/status.md) |
 | **O bruto é gravado; o JSONL é uma projeção dele** | Corrigir uma regra de limpeza é reprojetar localmente, sem recoletar nada | [`parser_base`](src/scrapers/parser_base.md) |
-| **Pacer global** | A cadência é o intervalo *entre* requisições; workers não aumentam a taxa vista pelo e-SAJ | [`esaj_client`](src/scrapers/esaj_client.md) |
+| **Pacer global** | A cadência é o intervalo *entre* requisições; workers não aumentam a taxa vista pelo e-SAJ. Só os "Mais" das movimentações de um mesmo processo ficam fora dela | [`esaj_client`](src/scrapers/esaj_client.md) |
+| **Movimentações completas ou nenhuma** | O e-SAJ entrega 5 por clique; uma falha em qualquer página devolve o processo à fila, porque lista parcial é indistinguível de completa | [`coletor`](src/scrapers/coletor.md) |
 | **`tipo` do vínculo tem um único escritor** | Vocabulário fechado, atribuído só com evidência; dois donos faziam o segundo desfazer o primeiro | [`vinculo`](src/transformers/vinculo.md) |
 | **Segredo de justiça suprime conteúdo, não topologia** | A aresta está no registro do outro processo, que não é sigiloso | [`projecao`](src/transformers/projecao.md) |
 | **Saída em JSONL, com `_id` explícito** | Streaming, memória constante, `mongoimport` nativo — e reimportação idempotente | [`exportador`](src/aggregators/exportador.md) |
@@ -131,4 +132,4 @@ uv run mkdocs build --strict        # falha em qualquer link quebrado
 
 ## Estado atual
 
-Não há suíte de testes automatizados. O [backlog de testes](backlog_testes.md) lista as 92 invariantes que valeria fixar, com a ordem sugerida por risco/custo, e [`spike_seletores`](scripts/spike_seletores.md) já produz os fixtures — os HTMLs de `data/spike/` são páginas reais do e-SAJ, e a maior parte da camada de scraping é composta de funções puras sobre string.
+Não há suíte de testes automatizados. O [backlog de testes](backlog_testes.md) lista as 96 invariantes que valeria fixar, com a ordem sugerida por risco/custo, e [`spike_seletores`](scripts/spike_seletores.md) já produz os fixtures — os HTMLs de `data/spike/` são páginas reais do e-SAJ, e a maior parte da camada de scraping é composta de funções puras sobre string.

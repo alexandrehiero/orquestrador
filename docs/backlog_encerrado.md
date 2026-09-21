@@ -3,7 +3,7 @@
 | Metadado            | Valor                                      |
 |---------------------|--------------------------------------------|
 | Data de criação     | 2026-09-04                                 |
-| Data de atualização | 2026-09-04                                 |
+| Data de atualização | 2026-09-21                                 |
 | Responsável(is)     | @alexandrehiero                            |
 | Origem              | seção "Itens encerrados" de [backlog.md](backlog.md) |
 
@@ -50,9 +50,14 @@ Um item chega aqui quando o código muda e a página de origem passa a registrar
 | `graus_citados` não chegava a lugar nenhum | `exportador`, `sqlite_store` | Gravado em `orfaos_diagnostico.txt`, separado porque `orfaos.txt` é lido de volta pela opção 3 |
 | `.tmp` sem proteção em `escrever_lista_orfaos` | `exportador` | Mesmo `try/except BaseException` das demais escritas |
 | Docstring do script de conferência offline com o nome errado do arquivo | `backlog` §5 | Corrigida para `python scripts/checar_offline.py` |
+| Movimentações vazias no layout novo do e-SAJ (set/2026), gravadas como `coletado` sem alarme | `coletor`, `parser_base`, `esaj_client` | Clique em "Exibir" e nos "Mais" até não haver cursor; recusa ou resposta estranha vira `erro_transitorio` |
+| Valor da ação sem o símbolo da moeda | `limpeza`, `projecao` | Campo `valor_acao_moeda`, com `R$` como padrão; `valor_acao` segue número |
+| Movimentações do JSON em duas direções (dias crescentes, mesmo dia decrescente) | `limpeza` | `dedup_movimentacoes` deixou de ordenar: a lista sai na ordem do e-SAJ |
+| Cadência alterada no `EsajClient` não chegava ao menu, que cria o `Pacer` à parte | `esaj_client`, `menu` | Padrão 1,1–1,6 s também no `Pacer`; o cabeçalho do menu lê o valor dele |
 
 ## Histórico de Modificações
 
 | Data | Usuário | Alteração |
 |------|---------|------------|
 | 2026-09-04 | @alexandrehiero | Criação: os 37 itens encerrados saíram de `backlog.md` para esta página; o nome do script de conferência offline foi acertado para `checar_offline.py`, que é o arquivo existente |
+| 2026-09-21 | @alexandrehiero | 4 itens do layout novo do e-SAJ: movimentações, moeda do valor, ordem das movimentações e cadência do menu |

@@ -3,7 +3,7 @@
 | Metadado            | Valor                                      |
 |---------------------|--------------------------------------------|
 | Data de criação     | 2026-08-10                                 |
-| Data de atualização | 2026-09-04                                 |
+| Data de atualização | 2026-09-21                                 |
 | Responsável(is)     | @alexandrehiero                            |
 | Dependências principais | `re` — só `src/scrapers/exceptions.py` do projeto |
 
@@ -25,7 +25,7 @@ Há uma segunda motivação. O e-SAJ organiza a consulta por **instância** (`cp
 - **`instancia_do_grau` é o ponto único de tradução domínio → e-SAJ** — grau desconhecido vira `ValueError` com o valor recebido, em vez de um `KeyError` cru.
 - **`params_busca(grau)` concentra a query string do `search.do`** — e o método existe por um detalhe concreto: **os dois graus usam nomes de parâmetro diferentes para a mesma coisa** (`dadosConsulta.valorConsultaNuUnificado` no 1º, `dePesquisaNuUnificado` no 2º). Espalhar isso pelo cliente HTTP significaria dois blocos de `if instancia == "cpopg"` em lugares distintos. É o único ponto a ajustar se o e-SAJ mudar.
 - **O roteamento de grau é derivado da própria estrutura do número** — origem `0000` indica processo autuado originariamente no 2º grau (Res. 65/2008, art. 1º §1º-A): agravo de instrumento, ação rescisória. `graus_a_tentar` devolve `(2,)` nesses casos e `(1, 2)` nos demais. Uma requisição economizada por agravo, sem heurística: é o que a Resolução define.
-- **`do_tjsp` valida o alvo antes de gastar requisição** — segmento `8` (Justiça Estadual) e tribunal `26` (São Paulo). Com a cadência de uma requisição a cada 1,7–2,5 s, descartar na leitura do arquivo é qualitativamente diferente de descobrir na rede.
+- **`do_tjsp` valida o alvo antes de gastar requisição** — segmento `8` (Justiça Estadual) e tribunal `26` (São Paulo). Com a cadência de uma requisição a cada 1,1–1,6 s, descartar na leitura do arquivo é qualitativamente diferente de descobrir na rede.
 - **`__eq__` e `__hash__` operam sobre os dígitos** — dois números construídos a partir de grafias diferentes (com máscara, sem, com ponto no lugar do hífen) são iguais e colidem no mesmo `hash`, porque `so_digitos` normaliza tudo na construção.
 
 ## Alternativas Consideradas
@@ -78,3 +78,4 @@ Não há suíte automatizada. A validação em uso é a inspeção manual via `s
 |------|---------|------------|
 | 2026-08-10 | @alexandrehiero | Criação e testes iniciais |
 | 2026-09-04 | @alexandrehiero | Reescrita enxuta (≤150 linhas): código copiado removido; invariantes migradas para o backlog de testes |
+| 2026-09-21 | @alexandrehiero | Cadência citada atualizada para 1,1–1,6 s |

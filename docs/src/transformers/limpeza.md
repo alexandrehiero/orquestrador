@@ -3,7 +3,7 @@
 | Metadado            | Valor                                      |
 |---------------------|--------------------------------------------|
 | Data de criação     | 2026-08-10                                 |
-| Data de atualização | 2026-09-04                                 |
+| Data de atualização | 2026-09-21                                 |
 | Responsável(is)     | @alexandrehiero                            |
 | Dependências principais | `re`, `unicodedata`, `datetime` — sem imports do projeto |
 
@@ -17,7 +17,7 @@ Há também consolidação: o módulo substitui as **quatro** implementações d
 
 ## Decisões de Arquitetura
 
-- **`None` em vez de string vazia ou sentinela** — sentinelas como `"NÃO INFORMADO"` parecem informativas até chegarem ao consumo: no Mongo quebram `$avg`/`$sum`; no pandas forçam `dtype=object` e desligam as operações vetorizadas da coluna. E o pipeline anterior as convertia para `None` no fim de qualquer forma — ela só existia para ser desfeita. A regra vale nas quatro funções: ausência tem uma representação só.
+- **`None` em vez de string vazia ou sentinela** — sentinelas como `"NÃO INFORMADO"` parecem informativas até chegarem ao consumo: no Mongo quebram `$avg`/`$sum`; no pandas forçam `dtype=object` e desligam as operações vetorizadas da coluna. E o pipeline anterior as convertia para `None` no fim de qualquer forma — ela só existia para ser desfeita. A regra vale em todas as funções de valor, `moeda_do_valor` inclusive: ausência tem uma representação só.
 - **`limpar_classe` remove TODO conteúdo entre parênteses** — uma regra abrangente em vez de três específicas. Os três casos reais (número do próprio processo, sequenciais como `(06)`, referências legais como `(Lei nº 9.099/95)`) não têm nada em comum além dos parênteses. Três padrões podem falhar de três maneiras; um falha de uma — e é reversível, porque o texto original está no banco.
 - **O laço trata aninhados e múltiplos** — `_PARENTESES` casa apenas parênteses sem aninhamento, então a substituição se repete até o texto parar de mudar. O `strip(" -–—:;,")` final remove a pontuação órfã típica de quando o parêntese vinha depois de um travessão.
 - **ISO para datas** — em `AAAA-MM-DD` a ordem lexicográfica coincide com a cronológica, então ordenar, comparar e filtrar por intervalo funcionam sem converter para tipo de data: em SQL, no Mongo, no pandas ou numa planilha.
@@ -26,8 +26,9 @@ Há também consolidação: o módulo substitui as **quatro** implementações d
 - **`finditer`, não `search`** — com uma tentativa só, uma data impossível encerrava a busca e a função devolvia `None` mesmo havendo data boa adiante: a validação teria trocado um erro (data falsa) por outro (dado perdido). O contrato é "a primeira data **válida** do texto".
 - **Normalização serve para comparar, não para armazenar** — a forma sem acento e minúscula é usada **só** como chave de conjunto; o que vai para a base é a grafia da primeira aparição. Gravar a forma normalizada destruiria acentuação e caixa de nomes próprios para resolver um problema de comparação, sem possibilidade de reverter.
 - **`dedup_nomes` preserva a ordem de aparição** — mantém lista com `set` auxiliar em vez de devolver o `set`. Numa lista de partes, a ordem em que o portal as apresenta carrega informação.
-- **`dedup_movimentacoes` ordena DEPOIS de converter** — ordenar `'09/01/2013'` como string agrupa por dia, depois mês, depois ano: uma ordem que não significa nada. É por isso que dedup e ordenação moram na mesma função. A chave é o par `(data ISO, descrição normalizada)`.
-- **Datas ilegíveis vão para o fim, nunca para o começo** — sem isso, uma movimentação sem data legível viraria "a mais antiga", que é exatamente a que o [`vinculo`](vinculo.md) usa para decidir a origem de um processo.
+- **`dedup_movimentacoes` mantém a ordem do e-SAJ** — mais recente primeiro, inclusive dentro do mesmo dia. A versão anterior ordenava por data crescente com `sort` estável: invertia os dias, mas mantinha a ordem do site dentro de cada dia, e a lista corria em duas direções. Caso real: em 1000858-24.2022, no dia 24/02/2023, a execução veio antes do arquivamento, mas o JSON crescente listava o arquivamento primeiro. Sem reordenar, o JSON é a tela; quem precisar da ordem cronológica inverte a lista inteira.
+- **Só se juntam movimentações com data, título e complemento idênticos** — a chave é `(data ISO, descrição normalizada)`, e a descrição já traz título e complemento juntos (ver [`parser_base`](../scrapers/parser_base.md)). Mesma data e título com complementos diferentes ficam separados. Validado nas 183 movimentações de agosto: 2 juntadas, ambas repetições exatas.
+- **`moeda_do_valor` separa o símbolo do número** — `valor_para_float` segue igual, e o número continua número. O símbolo sai do texto bruto (`R$`, `US$`, `€`, `£`, `$`); quando a capa não o exibe, como a de 2º grau (`'1.000,00'`), vale `MOEDA_PADRAO = "R$"`, porque todo valor do TJSP é em reais. Sem valor, `None`.
 - **`valor_para_float` busca em dois passos, e a ordem dos passos é a decisão** — há duas correções empilhadas. A original apagava tudo que não fosse dígito ou vírgula: `'R$ 3.724,16 - atualizado em 2024'` virava **`3724.162024`**, plausível e errado por três ordens de grandeza. A segunda tentativa usou alternação única com os formatos do mais específico ao menos — e **não é assim que alternação funciona**: ela resolve pela posição **mais à esquerda** que casar com *qualquer* ramo, e a ordem só desempata candidatos que começam no mesmo ponto. Em `'em 2024: R$ 3.724,16'` o ano vencia pelo ramo `\d+`. Dois padrões separados convertem preferência de formato em preferência de **passo**: o primeiro varre a string inteira atrás de um valor com centavos, e o ano deixa de competir porque não está na mesma disputa.
 - **`valor_para_float` aceita o que já é número** — torna a função idempotente: reprojetar uma base já projetada não quebra.
 
@@ -57,8 +58,9 @@ Dentro de cada passo a alternação continua ordenada do mais específico para o
 | Gravar o nome normalizado (sem acento, minúsculo) | Destruiria acentuação e caixa de nomes próprios para resolver um problema de comparação, sem reverter. |
 | `dedup_nomes` devolvendo `set` | Perderia a ordem de aparição, que carrega informação sobre como o portal apresenta as partes. |
 | Comparação difusa (`thefuzz`) para nomes | Uniria nomes distintos que se parecem. A dedup é conservadora de propósito. |
-| Ordenar as movimentações antes de converter para ISO | Ordenaria por dia, depois mês, depois ano. |
-| Ordenar com `None` no começo | Uma movimentação sem data legível viraria "a mais antiga" — e é a mais antiga que o `vinculo` usa para determinar a origem. |
+| Ordenar as movimentações por data crescente (versão anterior) | Com `sort` estável, os dias invertiam e as movimentações de um mesmo dia não: duas direções na mesma lista. |
+| Pôr o símbolo dentro de `valor_acao` (`"R$ 4.832,96"`) | O campo deixaria de ser número: `$sum`/`$avg` no Mongo e operações do pandas exigiriam converter antes. |
+| `valor_acao_moeda: None` quando a capa não mostra o símbolo | Decisão do projeto: todo valor do TJSP é em reais, e o 2º grau nunca exibe o símbolo. |
 
 ## Limitações Conhecidas
 
@@ -67,15 +69,19 @@ Dentro de cada passo a alternação continua ordenada do mais específico para o
 - **`limpar_classe` remove parênteses legítimos.** Não há caso conhecido no TJSP, mas a regra é deliberadamente abrangente e não distingue.
 - **Dentro de cada passo, quem decide ainda é a posição.** Os dois passos resolvem a competição entre *classes* de número, não dentro da mesma classe: `'Custas 12,50 - Valor R$ 3.724,16'` devolve `12.5`. O campo de origem (`#valorAcaoProcesso`) hoje traz só o valor, então o caso não ocorre na prática.
 - **`_DATA_BR` exige dia e mês com dois dígitos.** Uma data escrita `9/1/2013` não é reconhecida.
+- **`valor_acao_moeda: "R$"` não distingue símbolo observado de padrão.** Na base final, o `R$` lido na capa de 1º grau e o `R$` assumido no 2º grau são iguais.
+- **A comparação de movimentações ignora maiúsculas, acentos e espaços.** Duas movimentações do mesmo dia que só diferissem nisso seriam juntadas; não há caso observado.
 
 ## Exemplo de Uso
 
 Todas as funções são puras e aplicadas pela [projeção](projecao.md) sobre o bruto guardado. Os valores abaixo foram conferidos à mão no interpretador; os três primeiros são de capas reais de `data/spike/`.
 
 ```python
-from src.transformers.limpeza import data_para_iso, dedup_nomes, valor_para_float
+from src.transformers.limpeza import data_para_iso, dedup_nomes, moeda_do_valor, valor_para_float
 
 valor_para_float('R$ 4.832,96')                      # 4832.96
+moeda_do_valor('R$ 4.832,96')                        # 'R$'     <- lido da capa (1º grau)
+moeda_do_valor('1.000,00')                           # 'R$'     <- MOEDA_PADRAO (2º grau)
 valor_para_float('em 2024: R$ 3.724,16')             # 3724.16  <- o ano não compete
 valor_para_float('R$ 1.234')                         # 1234.0   <- 2º passo, sem centavos
 data_para_iso('09/01/2013 às 11:39 - Livre')         # '2013-01-09'
@@ -87,7 +93,7 @@ dedup_nomes(['MICHELE DIAS', 'Michele  Dias'])       # ['MICHELE DIAS']  <- graf
 
 ## Testes e Validação
 
-Não há suíte automatizada — e **este é o módulo em que essa ausência é mais fácil de resolver**: funções puras, sem I/O, sem dependências do projeto, com os pares entrada/saída já nas docstrings. `scripts/checar_offline.py` **não** o exercita: para no parser e no vínculo, antes da projeção. A tabela acima é conferência manual; nada disso é reexecutado por ninguém. As 6 invariantes estão no [backlog de testes](../../backlog_testes.md).
+Não há suíte automatizada — e **este é o módulo em que essa ausência é mais fácil de resolver**: funções puras, sem I/O, sem dependências do projeto, com os pares entrada/saída já nas docstrings. `scripts/checar_offline.py` **não** o exercita: para no parser e no vínculo, antes da projeção. A tabela acima é conferência manual; nada disso é reexecutado por ninguém. As 7 invariantes estão no [backlog de testes](../../backlog_testes.md).
 
 ## Histórico de Modificações
 
@@ -97,3 +103,4 @@ Não há suíte automatizada — e **este é o módulo em que essa ausência é 
 | 2026-08-11 | @alexandrehiero | Os dois pontos em aberto viraram correção de código; registrados como decisões |
 | 2026-08-11 | @alexandrehiero | Busca do valor em dois passos: a alternação única resolvia pelo padrão mais à esquerda, não pelo mais específico |
 | 2026-09-04 | @alexandrehiero | Reescrita enxuta (≤150 linhas): narrativa das 8 decisões virou lista de tópicos; a tabela de conferência manual virou o Exemplo de Uso; invariantes migradas para o backlog de testes |
+| 2026-09-21 | @alexandrehiero | `dedup_movimentacoes` deixa de ordenar e mantém a ordem do e-SAJ; `moeda_do_valor` e `MOEDA_PADRAO` |

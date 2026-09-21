@@ -3,7 +3,7 @@
 | Metadado            | Valor                                      |
 |---------------------|--------------------------------------------|
 | Data de criação     | 2026-08-10                                 |
-| Data de atualização | 2026-09-04                                 |
+| Data de atualização | 2026-09-21                                 |
 | Responsável(is)     | @alexandrehiero                            |
 | Dependências principais | `beautifulsoup4`, `re`, `unicodedata` (biblioteca padrão) |
 
@@ -18,7 +18,7 @@ Por isso o parser guarda `"Cumprimento de Sentença contra a Fazenda Pública (0
 ## Decisões de Arquitetura
 
 - **`parse()` devolve 12 chaves, todas cruas** — `valor` é a string `"R$ 3.724,16"`, não `float`; `data_distribuicao` é `"09/01/2013 às 11:39 - Livre"`, não data ISO. A conversão acontece na projeção.
-- **`completude` diz QUAIS blocos vieram, não "veio ou não veio"** — um booleano único responde "extraí alguma coisa?", e a resposta é sim mesmo quando o bloco mais importante veio vazio. As três bandeiras (`tem_classe`, `tem_partes`, `tem_movimentacoes`) permitem a [`coletor._capa_suspeita`](coletor.md) reprovar a capa com classe e movimentações mas **zero** partes — que é seletor quebrado, não processo sem partes.
+- **`completude` diz QUAIS blocos vieram, não "veio ou não veio"** — um booleano único responde "extraí alguma coisa?", e a resposta é sim mesmo quando o bloco mais importante veio vazio. As três bandeiras (`tem_classe`, `tem_partes`, `tem_movimentacoes`) permitem a [`coletor._capa_suspeita`](coletor.md) reprovar a capa com classe e movimentações mas **zero** partes — que é seletor quebrado, não processo sem partes. `tem_movimentacoes` usa o mesmo `SELETOR_MOVIMENTACOES` da extração, nos dois layouts.
 - **Partes viram lista de dicts com o rótulo real preservado** — cinco listas paralelas (`autores`, `reus`, `advogados_autores`…) obrigam a decidir o polo no momento da extração e descartam a informação que permitiria revisar essa decisão. Guardando `tipo_parte` (`Exeqte`, `Reqdo`) ao lado de `polo`, o rótulo original sobrevive. É a lógica do bruto, aplicada dentro do bruto.
 - **O polo é classificado por match exato na célula de tipo** — a célula tem uma ou duas palavras; a linha inteira tem o nome da parte e os advogados. Procurar `"re"` na linha casa com qualquer nome que contenha essas letras.
 - **Três correções de vocabulário jurídico frente ao pipeline anterior** — `credor/credora` movidos para ATIVO (na execução, o credor é quem executa); `interessado/interessada` removidos de PASSIVO (rótulo neutro, vai para OUTRO); e as flexões que faltavam e caíam em OUTRO em silêncio (apelada, recorrida, impetrada, suscitante/suscitado, devedor/devedora).
@@ -32,6 +32,8 @@ Por isso o parser guarda `"Cumprimento de Sentença contra a Fazenda Pública (0
 - **Template Method: a subclasse define o juiz** — `_extrair_juiz` levanta `NotImplementedError` em vez de ter retorno padrão, para que uma terceira subclasse não herde em silêncio um comportamento que não vale para ela. O atributo `GRAU` é **lido**: é dele que o coletor deriva o mapa de roteamento.
 - **A base não é um denominador comum neutro** — `ParserPrimeiroGrau` sobrescreve um método; `ParserSegundoGrau` sobrescreve quatro e acrescenta três. A assimetria indica que esta classe foi escrita contra o HTML de `cpopg`, o que importa para quem for estendê-la a outro tribunal.
 - **Movimentações guardam título e complemento numa string só** — simplifica a busca textual, que é o uso principal do campo, ao custo de não permitir filtrar só por título. É decisão registrada, não acidente de parsing.
+- **`SELETOR_MOVIMENTACOES` cobre os dois layouts** — o antigo (`#tabelaTodasMovimentacoes`, tudo na capa) e o de set/2026: `#tabelaPrimeiraPaginaMovimentacoes` no 1º grau, `#tabelaMovimentacoesAjax` no 2º e `#movimentacoesDemaisPaginas`, o `tbody` que o [`coletor`](coletor.md) monta com as páginas do "Mais". `_extrair_movimentacoes` lê **todas** as tabelas, em ordem de documento — a ordem do site —, e ignora `#trCursorMovimentacoes` e `#metaPaginaMovimentacoes`, linhas ocultas que só carregam o cursor.
+- **`cursor_movimentacoes` e `recusa_movimentacoes` moram aqui, não no coletor** — são leitura de HTML, e o conhecimento do HTML fica no parser; o coletor só decide o que fazer com a resposta. O cursor tem quatro endereços, conforme o grau e a página: input oculto e linha oculta no 1º grau; link "Mais" e linha meta (com `data-tem-mais-paginas`) no 2º.
 
 ## Alternativas Consideradas
 
@@ -56,6 +58,7 @@ Por isso o parser guarda `"Cumprimento de Sentença contra a Fazenda Pública (0
 
 - **O dict bruto ganha uma chave depois de sair daqui.** `parse()` não produz `observacoes`, mas `scripts/menu.py` a acrescenta antes de gravar, com o resultado de `derivar_vinculo`. O contrato do bruto é maior do que este arquivo revela.
 - **`_extrair_movimentacoes` usa `tds[0]` e `tds[-1]`.** Se o e-SAJ acrescentar uma coluna intermediária, ela é descartada sem aviso.
+- **`#movimentacoesDemaisPaginas` é um contrato entre coletor e parser.** O id não existe no e-SAJ; renomeá-lo de um lado só faz as páginas 2 em diante sumirem sem erro.
 - **`_extrair_partes` cai para `tds[-1]` quando não acha `td.nomeParteEAdvogado`.** Fallback razoável mas silencioso: uma mudança de classe CSS degradaria a extração sem que `completude` acusasse, porque `tem_partes` continuaria verdadeiro.
 - **A extração de representantes depende da estrutura de `<span>`.** Qualquer reorganização do HTML devolve lista vazia — de novo, sem sinal em `completude`.
 - **`_rotulo_estrito` varre todos os `span`, `td`, `dt`, `th`, `label` e `div`, até dez vezes por capa.** Cada chamada só ocorre quando o seletor por `id` falhou, então o custo depende de quanto o layout `unj` está em uso.
@@ -91,3 +94,4 @@ Não há suíte automatizada. A validação em uso é `scripts/spike_seletores.p
 | 2026-08-10 | @alexandrehiero | Criação e testes iniciais |
 | 2026-08-10 | @alexandrehiero | `_juiz_valido` compara por palavra inteira; `SELETORES_SITUACAO` confirmado em HTML real pelo spike; `GRAU` passa a alimentar `PARSER_POR_GRAU` |
 | 2026-09-04 | @alexandrehiero | Reescrita enxuta (≤150 linhas): narrativa das 12 decisões virou lista de tópicos; código copiado removido; "Pontos em aberto" migrou para o backlog e as invariantes para o backlog de testes |
+| 2026-09-21 | @alexandrehiero | `SELETOR_MOVIMENTACOES` para o layout novo do e-SAJ; extração de todas as tabelas; `cursor_movimentacoes` e `recusa_movimentacoes` |

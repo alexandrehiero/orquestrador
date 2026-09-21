@@ -3,7 +3,7 @@
 | Metadado            | Valor                                      |
 |---------------------|--------------------------------------------|
 | Data de criação     | 2026-08-10                                 |
-| Data de atualização | 2026-09-04                                 |
+| Data de atualização | 2026-09-21                                 |
 | Responsável(is)     | @alexandrehiero                            |
 | Dependências principais | `tqdm`, `concurrent.futures`, e todos os módulos de `src/` |
 
@@ -30,7 +30,7 @@ Este é o único ponto de entrada do projeto. Tudo o que os módulos de `src/` s
 - **A reprojeção é guardada por versão de regra** — sem a guarda, toda opção 4 releria o `bruto` da base inteira, o grosso do banco, mesmo sem mudança nenhuma.
 - **Workers fazem rede e parse; a thread principal grava** — como `coletar_um` é função pura que devolve um `ResultadoColeta`, os workers nunca tocam o banco, e o [`SqliteStore`](../src/store/sqlite_store.md) pode ser um objeto comum, sem lock nem thread escritora.
 - **A submissão é limitada a `WORKERS * 2` em voo** — `ThreadPoolExecutor` aceita quantos `submit` você quiser e enfileira todos; com 250 mil números, a fila de futures estoura a memória antes de a primeira requisição sair. Não é otimização, é necessidade.
-- **Workers não aceleram a coleta, e o código diz isso no ponto da tentação** — o `Pacer` e o `MonitorFalhas` são criados uma vez e compartilhados, então o teto continua 1 requisição a cada 1,7–2,5 s. Eles só evitam que um pico de latência deixe a fila ociosa. A fábrica só é construída quando uma opção precisa de rede: a opção 4 nunca cria cliente.
+- **Workers não aceleram a coleta, e o código diz isso no ponto da tentação** — o `Pacer` e o `MonitorFalhas` são criados uma vez e compartilhados, então o teto continua 1 requisição a cada 1,1–1,6 s — o padrão do `Pacer`, que o cabeçalho do menu lê em vez de repetir. Só os "Mais" das movimentações ficam fora dele (ver [`esaj_client`](../src/scrapers/esaj_client.md)). Eles só evitam que um pico de latência deixe a fila ociosa. A fábrica só é construída quando uma opção precisa de rede: a opção 4 nunca cria cliente.
 - **Duas formas de parar, ambas preservando o que foi pago** — o disjuntor (`EsajIndisponivelError`) e o `Ctrl+C` interrompem a submissão de trabalho novo, mas o laço continua consumindo o que está em execução. Cada resultado em voo custou uma requisição contra um portal público.
 - **Sem bruto, o vínculo é `indefinido`, não `sem_vinculo`** — afirmar "não há pai" exige ter olhado, e em segredo de justiça a capa foi negada. Mesma disciplina que separa `sem_dados` de `erro_transitorio`.
 - **Escrita atômica também nos `.txt`** — os arquivos são regeneráveis, mas um truncado é pior que um ausente: a opção 2 leria uma fila incompleta sem qualquer sinal.
@@ -129,3 +129,4 @@ O único módulo que **não** passa por aqui é o par de parsers, alcançado ind
 |------|---------|------------|
 | 2026-08-11 | @alexandrehiero | Criação |
 | 2026-09-04 | @alexandrehiero | Reescrita enxuta (≤150 linhas): narrativa das 10 decisões virou lista de tópicos; código copiado removido; "Pontos em aberto" migrou para o backlog |
+| 2026-09-21 | @alexandrehiero | Cadência 1,1–1,6 s, lida do `Pacer` no cabeçalho do menu; os "Mais" das movimentações ficam fora dela |

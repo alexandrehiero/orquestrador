@@ -3,9 +3,9 @@
 | Metadado            | Valor                                      |
 |---------------------|--------------------------------------------|
 | Data de criação     | 2026-08-10                                 |
-| Data de atualização | 2026-09-04                                 |
+| Data de atualização | 2026-09-21                                 |
 | Responsável(is)     | @alexandrehiero                            |
-| Dependências principais | `collections.namedtuple` — sem dependências externas |
+| Dependências principais | `collections.namedtuple`, `re` — sem dependências externas |
 
 ## Contexto e Motivação
 
@@ -21,7 +21,7 @@ O resultado é um registro perfeitamente formado, com dados verdadeiros, sob o g
 
 - **Função pura: não grava e não conhece o banco** — roda dentro das threads do pool; a gravação acontece na thread principal. É essa separação que permite ao [`SqliteStore`](../store/sqlite_store.md) não precisar ser thread-safe.
 - **O resultado é uma tupla nomeada `(status, grau, bruto, motivo)`** — quatro campos cobrem os quatro desfechos sem classes distintas nem exceções para controle de fluxo.
-- **`EsajIndisponivelError` atravessa sem ser capturada** — o `except` pega `EsajRequisicaoError`, e a exceção do disjuntor sequer pertence a essa hierarquia (ver [`exceptions`](exceptions.md)). A queda do portal sobe até o menu e interrompe a submissão, em vez de virar mais um `erro_transitorio` numa fila que continuaria consumindo.
+- **`EsajIndisponivelError` atravessa sem ser capturada** — na busca e no detalhe o `except` pega `EsajRequisicaoError`; nas movimentações, `EsajError`, porque o próprio coletor levanta essa base para recusa e paginação sem fim. Em nenhum dos casos a exceção do disjuntor é pega: ela sequer pertence à hierarquia (ver [`exceptions`](exceptions.md)). A queda do portal sobe até o menu e interrompe a submissão, em vez de virar mais um `erro_transitorio` numa fila que continuaria consumindo.
 - **Uma única linha do módulo avança de grau, e ela é guardada** — todos os demais caminhos terminam em `return`. Não existe queda para o grau seguinte por omissão: a estrutura torna o erro impossível em vez de depender de revisão.
 - **`NAO_ENCONTRADO` após uma seleção resolvida NÃO avança** — é o ponto em que a letra e o fundamento da regra se separam, e a correção escolheu o fundamento: a tela de seleção já **provou** que o processo existe naquele grau. Um destino que responde "não existe" aponta para o destino (código de sessão expirado, link inválido), não para a ausência do processo.
 - **Seleção irresolvível é erro, nunca "não existe"** — a tela de seleção é prova de existência. Gravar `sem_dados`, que é terminal, trocaria falha recuperável por afirmação falsa e permanente.
@@ -31,6 +31,8 @@ O resultado é um registro perfeitamente formado, com dados verdadeiros, sob o g
 - **O grau de uma falha vai na mensagem, não em coluna** — em todo o resto do banco `grau` significa grau **observado**. Guardar tentativas frustradas na mesma coluna faria uma consulta inocente como "quantos processos no grau 2" somar o que se sabe com o que só se tentou saber. O parâmetro é obrigatório: esquecê-lo vira `TypeError` na hora.
 - **`_capa_suspeita`: capa sem partes é seletor quebrado** — a validação antiga exigia que os quatro blocos estivessem vazios, então uma quebra só no seletor de partes passava e gravava o processo sem autores nem réus. O falso positivo consome tentativas até o teto e vai para revisão manual: o desenho aceita retrabalho em troca de nunca gravar em silêncio uma capa incompleta.
 - **`PARSER_POR_GRAU` é derivado do atributo `GRAU`, não escrito à mão** — `{1: ParserSegundoGrau}` é um dicionário válido: nada falha, e o parser errado devolve campos plausíveis com `juiz: None`. Derivado, o erro não tem como ser escrito. É público de propósito: o spike importa deste dicionário, para diagnosticar exatamente o caminho que a coleta percorre.
+- **`_exibir_movimentacoes` clica em "Exibir" e em "Mais" até não haver cursor** — desde set/2026 a capa traz só um botão e o código interno do processo num script; as movimentações chegam por AJAX, 5 por vez (ver [`esaj_client`](esaj_client.md)). O critério de parada é a **ausência de cursor**, não o sumiço do botão: na última página o link vira "Recolher" e passa a só esconder e mostrar, então clicar até ele sumir nunca terminaria. As páginas são inseridas no contêiner da capa, como faz o JavaScript do portal, e o [parser](parser_base.md) lê tudo de uma vez. Capa sem o código (layout antigo) segue intacta.
+- **Movimentações completas ou nenhuma** — recusa do e-SAJ em qualquer página, 1ª página sem tabela, cursor repetido ou mais de `LIMITE_PAGINAS_MOVIMENTACOES` (1000) levantam `EsajError`, e o processo **inteiro** volta como `erro_transitorio`. Uma lista parcial é indistinguível de uma completa depois de virar JSONL, e as páginas perdidas seriam justamente as mais antigas — onde está a movimentação de origem que o [`vinculo`](../transformers/vinculo.md) usa para achar o pai.
 - **O vocabulário de status vem de fora** — o candidato natural seria o `sqlite_store`, que valida e grava os status; mas esta é uma função que **não conhece o banco**, e importar de `store/` inverteria a dependência sem ganho. Ver [`status`](../status.md).
 
 ### A máquina de estados
@@ -48,6 +50,8 @@ O laço percorre `np.graus_a_tentar`. A coluna do motivo importa: é o texto que
 | `DADOS_CAPA` + `INDETERMINADO` e escolha não verificada | `erro_transitorio` — `escolha não verificada` | **Não** |
 | `DADOS_CAPA` sem partes, com classe ou movimentações | `erro_transitorio` — `capa sem partes (possível seletor quebrado)` | **Não** |
 | `DADOS_CAPA` sem bloco nenhum | `erro_transitorio` — `capa sem nenhum bloco extraído` | **Não** |
+| `DADOS_CAPA`, falha de rede ou recusa numa página de movimentações | `erro_transitorio` — `falha ao exibir movimentações (…)` | **Não** |
+| `DADOS_CAPA`, 1ª página de movimentações sem tabela ou paginação sem fim | `erro_transitorio` — `falha ao exibir movimentações (…)` | **Não** |
 | `DADOS_CAPA` íntegra | `coletado`, com o grau observado e o `bruto` | Terminal |
 | `NAO_ENCONTRADO` **depois** de uma seleção resolvida | `erro_transitorio` — `destino provavelmente expirado` | **Não** |
 | `NAO_ENCONTRADO` na busca direta | — | **Sim** |
@@ -67,7 +71,11 @@ O laço percorre `np.graus_a_tentar`. A coluna do motivo importa: é o texto que
 | Zerar o grau nos registros de segredo de justiça | O grau não é dado sigiloso: foi o portal que respondeu naquele grau. Zerá-lo perderia informação verdadeira e assimetrizaria o grafo. |
 | Deixar o coletor gravar no banco | Obrigaria o `SqliteStore` a ser thread-safe, com lock ou thread escritora dedicada — mais código e mais risco. |
 | Usar exceções para os desfechos (`ProcessoNaoEncontrado`, `ProcessoSigiloso`) | Fluxo de controle por exceção para casos esperados. A tupla nomeada expressa os quatro desfechos sem custo nem ambiguidade. |
-| Capturar `EsajError` (a base) em vez de `EsajRequisicaoError` | Não mudaria o comportamento hoje, mas alargaria a captura para qualquer erro futuro derivado da base — inclusive os que deveriam interromper. |
+| Capturar `EsajError` (a base) também na busca e no detalhe | Não mudaria o comportamento hoje, mas alargaria a captura para qualquer erro futuro derivado da base. Nas movimentações a base é capturada de propósito: é o coletor que a levanta. |
+| Só o clique em "Exibir movimentações" | Traz as 5 mais recentes (testado em 2026-09-21). A de origem, usada pelo vínculo, fica de fora. |
+| Movimentações do DataJud (API pública do CNJ) | Testado em 2026-09-21: 23 de 890 descrições idênticas (códigos TPU, não o texto do e-SAJ), datas divergentes num processo e 2 de 7 listas ausentes. |
+| Parar a paginação quando o botão "Mais" sumir | Na última página o link vira "Recolher" e continua lá: a paginação nunca terminaria. |
+| Gravar as páginas obtidas até a falha | Lista parcial indistinguível de completa, e sem as mais antigas — onde está a movimentação de origem. |
 | Validar a capa com um booleano `dados_ok` (AND de quatro condições) | Modelo anterior: a quebra de um seletor específico passava e o processo era gravado sem autores nem réus, invisível numa base grande. |
 | Aceitar a capa sem partes por precaução, para não perder processos | Trocaria retrabalho por dado incompleto gravado em silêncio. O teto de tentativas resolve o falso positivo sem abrir mão da verificação. |
 | Conferir a identidade só quando a escolha veio de palpite | `DIVERGE` acontece também na busca direta (redirecionamentos, códigos reaproveitados). A conferência é sempre feita; o que varia é a resposta ao `INDETERMINADO`. |
@@ -85,6 +93,9 @@ O laço percorre `np.graus_a_tentar`. A coluna do motivo importa: é o texto que
 - **A página é classificada duas vezes quando há tela de seleção.** É o custo de não confiar no que a seleção prometeu.
 - **O `bruto` só existe para `coletado`.** `segredo_justica` e `sem_dados` retornam `bruto=None`, e é por isso que o menu grava o vínculo padrão `INDEFINIDO` nesses casos.
 - **Não há distinção entre os motivos de `DESCONHECIDO`.** Layout novo, bloqueio, captcha e manutenção produzem o mesmo texto; diagnosticar depende do HTML salvo por `scripts/spike_seletores.py`.
+- **Processo sem nenhuma movimentação não foi observado no layout novo.** Se a 1ª página vier sem tabela, o processo gasta as tentativas e vai para revisão manual com o motivo "resposta de movimentações não reconhecida".
+- **Uma falha na página N descarta as N−1 já obtidas.** Retrabalho aceito em troca de nunca gravar lista parcial.
+- **O custo cresce com o processo:** ~1 requisição a cada 5 movimentações. Um processo de 605 levou 123 requisições (10 s, com os "Mais" fora da cadência).
 
 ## Exemplo de Uso
 
@@ -104,7 +115,7 @@ else:
 
 ## Testes e Validação
 
-Não há suíte automatizada. `scripts/spike_seletores.py` exercita as mesmas peças e importa daqui o `PARSER_POR_GRAU`, mas **não** chama `coletar_um` — consulta sempre os dois graus, o oposto da lógica de roteamento deste módulo. É o módulo com a melhor relação risco/facilidade de teste: `coletar_um` aceita um `client` dublê que devolve HTMLs de `data/spike/`, sem rede. As 9 invariantes estão no [backlog de testes](../../backlog_testes.md).
+Não há suíte automatizada. `scripts/spike_seletores.py` exercita as mesmas peças e importa daqui o `PARSER_POR_GRAU`, mas **não** chama `coletar_um` — consulta sempre os dois graus, o oposto da lógica de roteamento deste módulo. É o módulo com a melhor relação risco/facilidade de teste: `coletar_um` aceita um `client` dublê que devolve HTMLs de `data/spike/`, sem rede. Foi assim que a paginação foi conferida em 2026-09-21: com um dublê, 3 páginas saíram na ordem e sem a linha do cursor, e recusa na 1ª e na 3ª página, resposta irreconhecível e cursor repetido viraram `erro_transitorio`. Ao vivo, as contagens bateram com a paginação manual: 54, 35, 52 e 605. As 11 invariantes estão no [backlog de testes](../../backlog_testes.md).
 
 ## Histórico de Modificações
 
@@ -114,3 +125,4 @@ Não há suíte automatizada. `scripts/spike_seletores.py` exercita as mesmas pe
 | 2026-08-10 | @alexandrehiero | Status importado de `src/status.py`; `PARSER_POR_GRAU` derivado do atributo `GRAU`; motivo próprio para a segunda tela de seleção; `NAO_ENCONTRADO` após seleção resolvida vira `erro_transitorio` |
 | 2026-08-10 | @alexandrehiero | `_erro` passa a exigir o `grau`; docstring registra por que o grau tentado não vira coluna |
 | 2026-09-04 | @alexandrehiero | Reescrita enxuta (≤150 linhas): narrativa das 12 decisões virou lista de tópicos; código copiado removido; invariantes migradas para o backlog de testes |
+| 2026-09-21 | @alexandrehiero | Layout novo do e-SAJ: `_exibir_movimentacoes` clica em "Exibir" e "Mais" até o fim; qualquer falha devolve o processo inteiro como `erro_transitorio` |

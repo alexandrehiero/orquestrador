@@ -3,13 +3,13 @@
 | Metadado            | Valor                                      |
 |---------------------|--------------------------------------------|
 | Data de criação     | 2026-08-10                                 |
-| Data de atualização | 2026-09-04                                 |
+| Data de atualização | 2026-09-21                                 |
 | Responsável(is)     | @alexandrehiero                            |
 | Dependências principais | `sqlite3`, `json`, `pathlib` (biblioteca padrão) |
 
 ## Contexto e Motivação
 
-Uma coleta de centenas de milhares de processos a uma requisição a cada 1,7–2,5 s não é uma execução: é uma **campanha**, que atravessa dias, quedas de energia, suspensões do notebook e `Ctrl+C`. O que decide se ela termina não é a velocidade — é a qualidade do checkpoint.
+Uma coleta de centenas de milhares de processos a uma requisição a cada 1,1–1,6 s não é uma execução: é uma **campanha**, que atravessa dias, quedas de energia, suspensões do notebook e `Ctrl+C`. O que decide se ela termina não é a velocidade — é a qualidade do checkpoint.
 
 Este módulo é a **fonte de verdade** do orquestrador. Os `.txt` que o [`menu`](../../scripts/menu.md) produz são views regeneradas a cada execução; apagar um deles não perde nada.
 
@@ -110,3 +110,4 @@ Não há suíte automatizada. A validação em uso é operacional: o `menu` impr
 | 2026-08-11 | @alexandrehiero | Os quatro pontos em aberto viraram correção de código; registrados como decisões |
 | 2026-08-11 | @alexandrehiero | `reprojetar_vinculos`: a coluna de vínculo deixa de exigir recoleta para ser corrigida |
 | 2026-09-04 | @alexandrehiero | Reescrita enxuta (≤150 linhas). Corrigidas três afirmações que o código já contradizia: a reprojeção **tem** guarda por versão, **reescreve** `bruto["observacoes"]`, e sua assinatura inclui `versao` e `forcar` |
+| 2026-09-21 | @alexandrehiero | Cadência citada atualizada para 1,1–1,6 s |

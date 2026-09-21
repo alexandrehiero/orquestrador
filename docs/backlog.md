@@ -3,7 +3,7 @@
 | Metadado            | Valor                                      |
 |---------------------|--------------------------------------------|
 | Data de criação     | 2026-08-10                                 |
-| Data de atualização | 2026-09-04                                 |
+| Data de atualização | 2026-09-21                                 |
 | Responsável(is)     | @alexandrehiero                            |
 | Cobertura atual     | todo o `src/` (13 módulos) e `scripts/`    |
 
@@ -44,9 +44,11 @@ Cinco utilitários com mais de uma implementação. Nenhum diverge hoje — toda
 | Só um ponto valida o status gravado | `SqliteStore.registrar_resultado` | Fora dele, string arbitrária entra sem reclamação | A fonte única eliminou a divergência entre módulos; não introduziu checagem de tipo |
 | `tipo_vinculo` não é validado contra o vocabulário | `projecao.projetar` copia `reg.get("tipo_vinculo")` | Um valor fora dos quatro sairia na base final sem sinal | Ao contrário do `status`, que tem o ramo `else` para se denunciar |
 | Ramo "capa de 2º grau sem 1ª instância" sem cobertura | `vinculo.py:98` | As duas capas de `cposg` em `data/spike/` têm `processo_1a_instancia`; o `elif` nunca é exercitado | A observação que denunciaria uma quebra de seletor nunca foi vista sendo escrita |
+| `_tem_dados_capa` ainda procura `#tabelaTodasMovimentacoes` | `page_state.py:108` | No layout novo do e-SAJ a tabela não existe na capa; a classificação segue funcionando pela tabela de partes | Uma capa sem tabela de partes perde o segundo sinal de "há dados", e `_e_segredo` passa a depender só dele |
+| Processo sem nenhuma movimentação não observado no layout novo | `coletor._exibir_movimentacoes` | Nenhum caso real conferido | Se a 1ª página vier sem tabela, o processo gasta as tentativas e vai para revisão manual como "resposta de movimentações não reconhecida" |
 | A reprojeção de vínculo não reescreve `bruto["observacoes"]` | `SqliteStore.reprojetar_vinculos` atualiza três colunas; as observações foram anexadas ao bruto pelo `menu` na coleta | Um registro antigo sai da base final com `relacionamento.tipo` novo e observação de vínculo velha | Mensagem reescrita ou observação nova não alcança o já coletado. A divergência é silenciosa: os dois campos são plausíveis lado a lado |
 
-**Origem:** [`parser_base`](src/scrapers/parser_base.md), [`page_state`](src/scrapers/page_state.md), [`status`](src/status.md), [`sqlite_store`](src/store/sqlite_store.md), [`vinculo`](src/transformers/vinculo.md), [`projecao`](src/transformers/projecao.md).
+**Origem:** [`parser_base`](src/scrapers/parser_base.md), [`page_state`](src/scrapers/page_state.md), [`coletor`](src/scrapers/coletor.md), [`status`](src/status.md), [`sqlite_store`](src/store/sqlite_store.md), [`vinculo`](src/transformers/vinculo.md), [`projecao`](src/transformers/projecao.md).
 
 ## 3. Seletores e premissas sobre o HTML do portal
 
@@ -66,6 +68,8 @@ Cinco utilitários com mais de uma implementação. Nenhum diverge hoje — toda
 |---|---|---|---|
 | Captcha é ponto cego do circuit breaker | `esaj_client.py` | Não há tratamento. Páginas de verificação caem em `DESCONHECIDO` → `erro_transitorio` | O breaker **não** dispara: do ponto de vista HTTP as requisições estão sendo bem-sucedidas. A fila inteira consumiria tentativas até o teto sem sinal de que a causa é única |
 | Bloqueio, captcha, manutenção e layout novo são indistinguíveis | `EstadoPagina.DESCONHECIDO` | Os quatro produzem o mesmo `erro_transitorio` com o motivo `"página não reconhecida"` | Diagnosticar exige olhar o HTML salvo por `scripts/spike_seletores.py` |
+| Recusa de movimentações não abre o disjuntor | `parser_base.recusa_movimentacoes`, `coletor` | A recusa vem com HTTP 200; cada processo recusado vira `erro_transitorio` | Uma recusa generalizada (limite de taxa) consumiria a fila até o teto de tentativas sem parar a execução — o mesmo ponto cego do captcha |
+| Os "Mais" das movimentações ficam fora da cadência | `EsajClient.carregar_movimentacoes` (`cadenciar=not cursor`) | Com 3 workers paginando juntos, a taxa instantânea passa do teto do `Pacer`; 0 recusas em 146 requisições no teste de 2026-09-21 | Se o e-SAJ passar a limitar rajadas, o sintoma é "e-SAJ recusou as movimentações" em série no console |
 | `motivo` é string livre, sem código estruturado | `ResultadoColeta.motivo` → `ultimo_erro` (truncado em 500 caracteres) | Agrupar falhas por causa exige *parsing* de string | Métricas de qualidade da coleta não são obteníveis em SQL |
 | `Pacer` não é persistente | `esaj_client.py:66` | Reiniciar zera `_proximo`; a primeira requisição sai imediatamente | Em retomadas frequentes, o intervalo entre a última requisição da execução anterior e a primeira da nova não é respeitado |
 | `Session` mantém cookies e nunca é reciclada | `esaj_client.py:155` | É o que faz a navegação seleção → detalhe funcionar | Um cliente marcado pelo portal continua marcado até o fim da execução |
@@ -86,6 +90,7 @@ Nenhum impede a operação hoje; todos são armadilhas para quem for estender ou
 | A opção 3 descarta os números inválidos sem registrar | `numeros, _ = ler_numeros(ORFAOS)` (`menu.py:318`) | A opção 1 grava os rejeitados em `numeros_invalidos.txt`; aqui o segundo retorno é ignorado | Como `vinculo._dv_ok` já filtra o DV, o caso restante é um pai **fora do TJSP**: sumiria da fila sem aparecer em lugar nenhum e voltaria a ser listado como órfão em toda opção 4 |
 | A docstring do `menu` descreve a opção 4 sem mencionar a reprojeção | Cabeçalho de `menu.py` diz só *"transforma os dados coletados na estrutura JSON final (local, sem rede)"* | A docstring de `opcao_4` já registra os três passos | Quem ler só o topo do arquivo não descobre que a opção 4 **escreve no banco** |
 | Duas docstrings do `spike` descrevem invocações diferentes | Cabeçalho de `spike_seletores.py` documenta `# lê data/entrada/processos.txt`; a de `main()` já descreve o nome de projeto | O padrão sem argumento é `processos`, que não existe no repositório (a entrada versionada é `teste1.txt`) | Benigno — a mensagem de arquivo não encontrado orienta —, mas o arquivo diz duas coisas sobre si mesmo |
+| O spike não clica em "Exibir movimentações" | `spike_seletores._relatar_capa` chama só `parse()` sobre a capa | No layout novo, o relatório `[parse]` mostra 0 movimentações | Quem usar o spike para validar seletores antes de uma coleta concluiria que as movimentações quebraram |
 | Nome de projeto com 20 dígitos vira número de processo | `numeros = [a for a in argumentos if len(re.sub(r"\D", "", a)) == 20]` (`spike_seletores.py:145`) | Nenhum com os nomes em uso | Um projeto como `coleta_20240101_20241231_v2` cairia na lista de números e seria consultado no e-SAJ |
 
 **Origem:** [`menu`](scripts/menu.md), [`spike_seletores`](scripts/spike_seletores.md).
@@ -96,7 +101,7 @@ Não há suíte automatizada no repositório. O obstáculo não é técnico: `pa
 
 O que existe é `scripts/checar_offline.py`, que reprocessa esses HTMLs sem nenhuma requisição e imprime o resultado para leitura humana. **Não é teste:** sem asserção, sem runner, sem veredito passa/falha.
 
-As 91 invariantes que valeria fixar, com a ordem sugerida, estão em [backlog de testes](backlog_testes.md).
+As 96 invariantes que valeria fixar, com a ordem sugerida, estão em [backlog de testes](backlog_testes.md).
 
 ## Histórico de Modificações
 
@@ -107,3 +112,4 @@ As 91 invariantes que valeria fixar, com a ordem sugerida, estão em [backlog de
 | 2026-08-11 | @alexandrehiero | Mais 6 itens encerrados; 3 itens novos, todos consequências da reprojeção |
 | 2026-08-11 | @alexandrehiero | Cobertura estendida a `scripts/`: nova §5 (6 itens); "Ausência de testes" passou a §6 |
 | 2026-09-04 | @alexandrehiero | Divisão em três páginas: invariantes de teste e itens encerrados ganharam página própria; §6 virou ponteiro |
+| 2026-09-21 | @alexandrehiero | Layout novo do e-SAJ: 2 itens em §2, 2 em §4 e 1 em §5; contagem de invariantes corrigida para 96 |

@@ -3,7 +3,7 @@
 | Metadado            | Valor                                      |
 |---------------------|--------------------------------------------|
 | Data de criação     | 2026-08-10                                 |
-| Data de atualização | 2026-09-04                                 |
+| Data de atualização | 2026-09-21                                 |
 | Responsável(is)     | @alexandrehiero                            |
 | Dependências principais | `src.transformers.limpeza`, `src.status` — sem dependências externas |
 
@@ -26,6 +26,8 @@ O nome é literal no sentido de banco de dados: uma projeção é uma vista deri
 - **Grau `0` volta a ser `null`** — o `0` é convenção interna do banco, necessária porque o SQLite aceita `NULL` em chave primária. Na base final não existe "grau zero" no Judiciário.
 - **Só dois polos na base final** — `_grupo` descarta quem não está no polo pedido; não há grupo para `OUTRO`. A supressão é decisão de projeto (o recorte da pesquisa são os polos) e interage com uma escolha do parser: `'interessado'` foi **removido** do passivo por ser rótulo neutro e passou a cair em `OUTRO`. O parser preserva a categoria; a projeção a suprime.
 - **Uma observação quando a supressão esvazia o documento** — no caso extremo em que **todas** as partes caem em `OUTRO`, o documento sai com autores e réus vazios, idêntico a uma capa sem partes, embora `completude["tem_partes"]` fosse verdadeiro e `_capa_suspeita` tenha aprovado a página justamente por haver partes. O registro passa por toda a rede de segurança e chega à base final aparentando o oposto do que foi observado. A observação não desfaz a supressão: impede que o documento **minta por omissão** e dá uma população recortável para auditar o classificador de polo.
+- **`valor_acao_moeda` fica ao lado de `valor_acao`, e o número continua número** — o símbolo ganhou campo próprio em vez de voltar para dentro do valor, que perderia `$sum` no Mongo e as operações numéricas do pandas. A chave nasce no `esqueleto`, para todos os status terem o mesmo conjunto de campos, e só é preenchida quando há valor: sem `valor_acao`, a moeda também é `null`. A regra do símbolo mora em [`limpeza.moeda_do_valor`](limpeza.md).
+- **As movimentações saem na ordem do e-SAJ** — mais recente primeiro, inclusive dentro do mesmo dia; a projeção só remove repetições exatas (ver [`limpeza`](limpeza.md)).
 - **Observações desduplicadas com ordem preservada** — vêm de duas origens (as de [`vinculo`](vinculo.md), anexadas ao bruto na coleta, e as que a projeção acrescenta por status) e podem repetir. O idioma aproveita que `set.add` devolve `None` para filtrar e registrar numa expressão só.
 
 ## Alternativas Consideradas
@@ -52,7 +54,7 @@ O nome é literal no sentido de banco de dados: uma projeção é uma vista deri
   | Bruto (parser) | Base final (JSONL) |
   |---|---|
   | `assunto` | `assunto_principal` |
-  | `valor` | `valor_acao` |
+  | `valor` | `valor_acao` (número) + `valor_acao_moeda` (símbolo) |
   | `movimentacoes[].descricao` | `movimentacoes[].movimento` |
 
 - **`completude` não é projetado.** As três bandeiras ficam no bruto: a qualidade da extração não é auditável a partir do JSONL, só consultando o SQLite.
@@ -93,3 +95,4 @@ Não há suíte automatizada. O módulo é puro e não precisa de banco, e `scri
 | 2026-08-11 | @alexandrehiero | Os dois pontos em aberto resolvidos: polo `OUTRO` virou decisão documentada, `ultimo_erro` corrigido no store |
 | 2026-08-11 | @alexandrehiero | Limitação do `tipo` não reprojetável reescrita: `reprojetar_vinculos` roda antes do export |
 | 2026-09-04 | @alexandrehiero | Reescrita enxuta (≤150 linhas): narrativa das 9 decisões virou lista de tópicos; código copiado removido; invariantes migradas para o backlog de testes |
+| 2026-09-21 | @alexandrehiero | Campo `valor_acao_moeda`; movimentações na ordem do e-SAJ |

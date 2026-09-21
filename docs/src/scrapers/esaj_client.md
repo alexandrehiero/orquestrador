@@ -3,7 +3,7 @@
 | Metadado            | Valor                                      |
 |---------------------|--------------------------------------------|
 | Data de criação     | 2026-08-10                                 |
-| Data de atualização | 2026-09-04                                 |
+| Data de atualização | 2026-09-21                                 |
 | Responsável(is)     | @alexandrehiero                            |
 | Dependências principais | `curl_cffi`, `threading`, `random`, `time` |
 
@@ -17,12 +17,12 @@ O terceiro é uma coleta que dura semanas contra um portal que pode cair, entrar
 
 ## Decisões de Arquitetura
 
-- **Anti-ban por construção: todo GET passa por `_get`** — não existe caminho alternativo, e `_get` começa chamando `_dormir()`. A alternativa (deixar o `sleep` a cargo de quem chama) depende de disciplina humana em cada ponto; basta esquecer em um caminho para perder a garantia, e esse caminho seria o menos exercitado.
+- **Anti-ban por construção: todo GET passa por `_get`** — não existe caminho alternativo, e `_get` começa chamando `_dormir()`. A alternativa (deixar o `sleep` a cargo de quem chama) depende de disciplina humana em cada ponto; basta esquecer em um caminho para perder a garantia, e esse caminho seria o menos exercitado. A única exceção à espera é explícita e tem um usuário só: `cadenciar=False`, para os "Mais" das movimentações. Mesmo ali, retentativa, backoff, contagem e disjuntor continuam valendo, porque a requisição continua passando por `_get`.
 - **O `Pacer` mede o intervalo ENTRE requisições, não sono somado a cada uma** — no modelo aditivo, `sleep(2.1)` seguido de uma requisição de 1,4 s produz um ciclo de 3,5 s para um alvo de 2,1 s: metade da espera não protege ninguém, só reduz a vazão em 60%. Aqui a pergunta é "quando é o próximo horário livre?", e a latência cabe **dentro** do intervalo.
 - **`max(agora, self._proximo)` descarta o crédito da ociosidade** — sem isso, uma pausa longa (almoço, notebook suspenso) deixaria `_proximo` no passado e a fila dispararia uma rajada instantânea ao retomar. É a linha que separa uma cadência de um limitador ingênuo.
 - **O slot é reservado dentro do lock; o `sleep` acontece fora dele** — senão cada thread bloquearia todas as outras durante a espera, e o pool viraria um laço sequencial com passos extras.
 - **O intervalo é sorteado, não fixo** — um intervalo constante produz padrão de tráfego regular, que é o que detecção de automação procura.
-- **O `Pacer` é global: workers NÃO aumentam a taxa vista pelo e-SAJ** — o teto continua uma requisição a cada 1,7–2,5 s com 1 ou 3 workers. O que eles resolvem é outro problema: quando uma página demora 8 s, o modelo de thread única deixa os slots seguintes passarem em branco. **A taxa não sobe; a ociosidade cai.**
+- **O `Pacer` é global: workers NÃO aumentam a taxa vista pelo e-SAJ** — o teto continua uma requisição a cada 1,1–1,6 s (padrão do `Pacer` e do `EsajClient` desde 2026-09-21; antes, 1,7–2,5 s) com 1 ou 3 workers. O que eles resolvem é outro problema: quando uma página demora 8 s, o modelo de thread única deixa os slots seguintes passarem em branco. **A taxa não sobe; a ociosidade cai.**
 - **O disjuntor é compartilhado pelo mesmo motivo** — com contadores por cliente, 3 workers precisariam de 60 falhas consecutivas para abrir o que deveria abrir em 20. Sem disjuntor nenhum, uma queda do portal faz a fila inteira consumir ~12 s por número (3 tentativas + backoff) e marcar tudo como falha — "descoberto só horas depois".
 - **Falhas consecutivas, não acumuladas** — `sucesso()` zera o contador. Uma base grande sempre produz timeouts esparsos; o circuito só deve abrir quando o padrão indica que o problema é do portal, não do processo.
 - **`falha()` devolve a decisão E o contador que a produziu** — um booleano bastaria para decidir, mas a mensagem precisa citar o número, e quem a monta está fora do lock. Reler o atributo abriria janela para outra thread já ter incrementado ou zerado: a exceção diria "23 falhas seguidas" num circuito calibrado em 20. É correção de **diagnóstico**, não de comportamento.
@@ -33,6 +33,8 @@ O terceiro é uma coleta que dura semanas contra um portal que pode cair, entrar
 - **Backoff exponencial com teto de 15 s e jitter** — teto para que `max_tentativas` alto não produza esperas absurdas; jitter para que workers que falharam juntos não retentem em uníssono.
 - **`impersonate="chrome120"` sozinho, sem nenhum header manual** — a premissa de um UA manual é que `impersonate` atua só na camada TLS/HTTP2; ela é falsa, o perfil inteiro do navegador vem junto. **E a incoerência é o sinal, não o valor**: um cliente que anuncia `Chrome/120` no cabeçalho enquanto negocia TLS como `chrome124` não parece um Chrome antigo, parece o que é. Trocar `impersonate` troca o disfarce inteiro de uma vez.
 - **`abrir_detalhe` aceita três formas de endereço** — href absoluto, path relativo ou o código interno opaco do SAJ, para o coletor repassar direto o que a tela de seleção deu, sem se importar com a origem.
+- **`carregar_movimentacoes` reproduz os cliques "Exibir movimentações" e "Mais"** — desde set/2026 o e-SAJ não põe as movimentações no HTML da capa: o navegador as busca em `carregarMovimentacoesAjax.do`, 5 por vez, e cada "Mais" manda o cursor da página anterior. O nome do parâmetro difere por grau (`processo.codigo` no `cpopg`, `cdProcesso` no `cposg`), e o endpoint **só responde na sessão que abriu a capa**: numa sessão nova ele devolve a mensagem de erro, com HTTP 200. Quem pagina e decide é o [`coletor`](coletor.md).
+- **Os "Mais" saem sem cadência; o "Exibir" continua nela** — medido em 2026-09-21: um processo de 54 movimentações fazia 12 requisições, com 13,5 s de espera para 1,2 s de rede. Sem a espera nos "Mais", o mesmo processo leva 1,9 s, e o de 605 movimentações faz 123 requisições em 10 s, sem nenhuma recusa. A cadência continua separando um processo do outro; dentro dele, os cliques seguem o ritmo da rede, como um navegador.
 
 ## Alternativas Consideradas
 
@@ -54,6 +56,9 @@ O terceiro é uma coleta que dura semanas contra um portal que pode cair, entrar
 | Um contador único de requisições | Um `_get` que retentou três vezes é uma operação e três requisições. Com um só, a carga real é subnotificada por até `max_tentativas`. |
 | Manter o nome `_registrar_falha`, com o contrato num comentário | O nome descrevia contabilidade, não interrupção. Um `return` acidental devolveria `None` como se fosse HTML. |
 | O cliente interpretar o HTML para decidir "não encontrado" | O e-SAJ devolve 200 para todos os casos. Misturar transporte e semântica impediria o `page_state` de ser testável sem rede. |
+| Cadência também nos "Mais" das movimentações | ~15 s por processo de 54 movimentações e ~2,7 min para um de 605 — 90% do tempo esperando, não trabalhando. |
+| Espera curta e global (~0,2 s) entre os "Mais" | Mais branda com o servidor, mas ~+2,5 s por processo; preterida pela meta de acréscimo de ~1 s por processo. |
+| Selenium clicando no botão "Mais" | Cada clique dispara a mesma requisição que o cliente já faz, mais o custo de renderizar a página. |
 
 ## Limitações Conhecidas
 
@@ -62,7 +67,8 @@ O terceiro é uma coleta que dura semanas contra um portal que pode cair, entrar
 - **`falhas` conta operações, não requisições.** Dos quatro números de `estatisticas()`, só `requisicoes` mede tentativas HTTP reais. A taxa de requisições que deram errado não é derivável dos contadores expostos.
 - **O `Pacer` não é persistente.** Reiniciar zera `_proximo` e a primeira requisição sai imediatamente; em retomadas frequentes, o intervalo entre execuções não é respeitado.
 - **Sem limite de tempo total nem de volume por execução.** O circuito abre por falhas consecutivas, não por "requisições demais nesta sessão".
-- **A `Session` mantém cookies e nunca é reciclada.** É o que faz a navegação seleção → detalhe funcionar, mas um cliente marcado pelo portal continua marcado até o fim da execução.
+- **A `Session` mantém cookies e nunca é reciclada.** É o que faz a navegação seleção → detalhe → movimentações funcionar, mas um cliente marcado pelo portal continua marcado até o fim da execução.
+- **Os "Mais" produzem picos acima da cadência.** Com 3 workers paginando ao mesmo tempo, a taxa instantânea passa do teto do `Pacer`. Se o e-SAJ recusar, a recusa vem com HTTP 200 e **não** abre o disjuntor — é o [`coletor`](coletor.md) que a reconhece e devolve o processo à fila como `erro_transitorio`.
 
 ## Exemplo de Uso
 
@@ -83,7 +89,7 @@ Se `buscar` levantar exceção, **não** tente o outro grau: erro de rede no 1º
 
 ## Testes e Validação
 
-Não há suíte automatizada. A validação disponível é `scripts/spike_seletores.py`, que exercita `buscar` nos dois graus, salva o HTML em `data/spike/` e imprime `estatisticas()` ao final. O comportamento do disjuntor de ponta a ponta é observável desligando a rede durante a opção 1: após 20 falhas consecutivas a execução precisa parar, em vez de consumir a fila. As 4 invariantes testáveis sem rede estão no [backlog de testes](../../backlog_testes.md).
+Não há suíte automatizada. A validação disponível é `scripts/spike_seletores.py`, que exercita `buscar` nos dois graus, salva o HTML em `data/spike/` e imprime `estatisticas()` ao final. O comportamento do disjuntor de ponta a ponta é observável desligando a rede durante a opção 1: após 20 falhas consecutivas a execução precisa parar, em vez de consumir a fila. As 5 invariantes testáveis sem rede estão no [backlog de testes](../../backlog_testes.md).
 
 ## Histórico de Modificações
 
@@ -92,3 +98,4 @@ Não há suíte automatizada. A validação disponível é `scripts/spike_seleto
 | 2026-08-10 | @alexandrehiero | Criação e testes iniciais |
 | 2026-08-10 | @alexandrehiero | Remoção do `User-Agent` manual; `MonitorFalhas` separa `requisicoes` de `operacoes` e ganha `tentativa()`; `falha()` devolve `(deve_abrir, falhas_seguidas)`; `_registrar_falha` renomeado para `_levantar_falha` |
 | 2026-09-04 | @alexandrehiero | Reescrita enxuta (≤150 linhas): narrativa das 12 decisões virou lista de tópicos; código copiado removido; invariantes migradas para o backlog de testes |
+| 2026-09-21 | @alexandrehiero | Cadência padrão 1,1–1,6 s também no `Pacer`; `carregar_movimentacoes` para o layout novo do e-SAJ; `_get(cadenciar=False)` só para os "Mais" |
