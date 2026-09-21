@@ -22,6 +22,10 @@ _DATA_BR = re.compile(r"\b(\d{2})/(\d{2})/(\d{4})\b")
 _VALOR_COM_CENTAVOS = re.compile(r"\d{1,3}(?:\.\d{3})+,\d{2}|\d+,\d{2}")
 _VALOR_SEM_CENTAVOS = re.compile(r"\d{1,3}(?:\.\d{3})+|\d+")
 
+_MOEDA = re.compile(r"R\$|US\$|€|£|\$")
+#: Todo valor do TJSP é em reais. A capa de 2º grau exibe '1.000,00', sem símbolo.
+MOEDA_PADRAO = "R$"
+
 
 def limpar_texto(valor):
     """Colapsa espaços e devolve None (não string vazia) quando não há conteúdo.
@@ -96,6 +100,17 @@ def valor_para_float(valor):
         return None
 
 
+def moeda_do_valor(valor):
+    """'R$ 3.724,16' -> 'R$'. Sem símbolo no texto -> MOEDA_PADRAO; sem valor -> None.
+
+    Separada de valor_para_float de propósito: o número continua número (soma e
+    média no Mongo/pandas), e o símbolo vai para um campo próprio."""
+    if valor is None:
+        return None
+    m = _MOEDA.search(str(valor))
+    return m.group(0) if m else MOEDA_PADRAO
+
+
 # --- desduplicação nativa (Teoria de Conjuntos) ------------------------------
 def _chave_dedup(texto):
     """Chave de comparação: minúsculas, sem acento, espaços colapsados.
@@ -122,9 +137,10 @@ def dedup_nomes(itens):
 
 
 def dedup_movimentacoes(movs):
-    """Dedup por (data ISO, descrição normalizada) e ordena da mais antiga para
-    a mais recente. O e-SAJ entrega em ordem decrescente; a ordenação só é
-    correta DEPOIS da conversão para ISO."""
+    """Dedup por (data ISO, descrição normalizada) — a descrição já traz título
+    e complemento juntos — mantendo a ORDEM DO e-SAJ: mais recente primeiro,
+    inclusive dentro do mesmo dia. Reordenar por data invertia os dias, mas
+    não as movimentações de um mesmo dia, e a lista saía em duas direções."""
     vistos = set()
     saida = []
     for mov in movs or []:
@@ -137,5 +153,4 @@ def dedup_movimentacoes(movs):
             continue
         vistos.add(chave)
         saida.append({"data": data, "movimento": desc})
-    saida.sort(key=lambda m: (m["data"] is None, m["data"] or ""))
     return saida

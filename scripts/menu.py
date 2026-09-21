@@ -67,9 +67,10 @@ def configurar_projeto(nome):
     BANCO = DIR_BANCOS / f"{nome}.db"
 
 
-# Workers NÃO aumentam a taxa vista pelo e-SAJ: o Pacer é global e o teto
-# continua 1 requisição a cada 1,7-2,5s. Eles evitam que um pico de latência
-# numa página deixe a fila ociosa e perca slots.
+# Workers NÃO aumentam a taxa vista pelo e-SAJ: o Pacer é global e o teto é o
+# dele (1,1-1,6s por padrão); só os 'Mais' das movimentações ficam fora da
+# cadência (ver esaj_client). Eles evitam que um pico de latência numa página
+# deixe a fila ociosa e perca slots.
 WORKERS = max(1, int(os.environ.get("ORQUESTRADOR_WORKERS") or 3))
 
 _local = threading.local()
@@ -402,7 +403,9 @@ def main():
     print(f"Banco:   {BANCO}")
     print(f"Entrada: {ENTRADA}")
     print(f"Saída:   {SAIDA}")
-    print(f"Workers: {WORKERS} (cadência global: 1 requisição a cada 1,7-2,5s)")
+    cadencia = Pacer()  # lê o padrão do Pacer, para a mensagem nunca divergir dele
+    print(f"Workers: {WORKERS} (cadência global: 1 requisição a cada "
+          f"{cadencia.minimo}-{cadencia.maximo}s)")
     fabrica = None  # só criada quando alguma opção precisa de rede
     try:
         while True:

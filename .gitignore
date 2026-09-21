@@ -4,6 +4,7 @@ data/
 *.db-shm
 *.tmp
 __pycache__/
+.env
 
 # Ambiente virtual criado por `uv sync`
 .venv/

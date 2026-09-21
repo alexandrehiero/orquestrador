@@ -57,7 +57,7 @@ class Pacer:
     threads serializariam no próprio lock.
     """
 
-    def __init__(self, minimo=1.7, maximo=2.5):
+    def __init__(self, minimo=1.1, maximo=1.6):
         if minimo <= 0 or maximo < minimo:
             raise ValueError("Intervalo inválido para o Pacer.")
         self.minimo = minimo
@@ -129,15 +129,15 @@ class MonitorFalhas:
                 "falhas": self.falhas,
                 "falhas_seguidas": self.falhas_seguidas,
             }
-
+        
 
 class EsajClient:
     BASE = "https://esaj.tjsp.jus.br"
 
     def __init__(
         self,
-        sleep_min=1.7,
-        sleep_max=2.5,
+        sleep_min=1.1,
+        sleep_max=1.6,
         timeout=30,
         max_tentativas=3,
         impersonate="chrome120",
@@ -180,12 +180,19 @@ class EsajClient:
             f"Falha após {self.max_tentativas} tentativas em {url}"
         ) from ultimo_erro
 
-    def _get(self, url, params=None):
-        """GET com sleep anti-ban, retentativa com backoff e circuit breaker."""
+    def _get(self, url, params=None, cadenciar=True):
+        """GET com sleep anti-ban, retentativa com backoff e circuit breaker.
+
+        `cadenciar=False` existe só para o 'Mais' das movimentações: são cliques
+        seguidos dentro do MESMO processo, que pela cadência custavam ~1,35 s
+        cada (13,5 s de espera para 1,2 s de rede num processo de 54
+        movimentações). Retentativa, backoff e disjuntor continuam valendo.
+        """
         ultimo_erro = None
         for tentativa in range(1, self.max_tentativas + 1):
             try:
-                self._dormir()  # cadência anti-ban em TODA requisição
+                if cadenciar:
+                    self._dormir()  # cadência anti-ban entre páginas de processo
                 self.monitor.tentativa()  # conta a requisição que vai sair
                 resp = self.session.get(url, params=params, timeout=self.timeout)
                 resp.raise_for_status()
@@ -221,6 +228,23 @@ class EsajClient:
             return self._get(self.BASE + alvo)
         url = f"{self.BASE}/{instancia_do_grau(grau)}/show.do"
         return self._get(url, params={"processo.codigo": alvo})
+
+    def carregar_movimentacoes(self, codigo, grau, cursor=None):
+        """Equivale ao clique em 'Exibir movimentações' (sem cursor) ou em 'Mais'
+        (com o cursor da página anterior): o e-SAJ deixou de pôr as
+        movimentações no HTML da capa e passou a carregá-las por AJAX, 5 por vez.
+        O nome do parâmetro difere entre cpopg e cposg. Só funciona na MESMA
+        sessão que abriu a capa — sem ela, o e-SAJ devolve mensagem de erro.
+
+        O 'Exibir' passa pela cadência; os 'Mais' saem sem espera, por decisão
+        do projeto. Se o e-SAJ recusar por excesso, a recusa vira
+        erro_transitorio no coletor — nunca lista parcial."""
+        param = "processo.codigo" if grau == 1 else "cdProcesso"
+        url = f"{self.BASE}/{instancia_do_grau(grau)}/carregarMovimentacoesAjax.do"
+        params = {param: codigo}
+        if cursor:
+            params["cursor"] = cursor
+        return self._get(url, params=params, cadenciar=not cursor)
 
     # --- métricas ------------------------------------------------------------
     def estatisticas(self):

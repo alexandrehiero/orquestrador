@@ -77,6 +77,60 @@ SELETORES_SITUACAO = ("#situacaoProcesso", ".unj-tag", ".unj-badge", ".tag")
 # Ordem importa: incidentes/cumprimentos não têm 'Distribuição', têm 'Recebido em'.
 ROTULOS_DISTRIBUICAO = ("Distribuição", "Recebido em", "Distribuido em")
 
+# Layout antigo: tudo na capa. Layout novo (set/2026): a tabela chega pelo
+# clique em 'Exibir movimentações' — 1º grau e 2º grau com ids diferentes — e
+# as páginas do 'Mais' entram em `#movimentacoesDemaisPaginas`, tbody montado
+# pelo coletor (não existe no e-SAJ).
+SELETOR_MOVIMENTACOES = (
+    "#tabelaTodasMovimentacoes, #tabelaPrimeiraPaginaMovimentacoes, "
+    "#tabelaMovimentacoesAjax, #movimentacoesDemaisPaginas"
+)
+
+# Linhas ocultas que só carregam o cursor da próxima página — não são movimentação.
+_LINHAS_CURSOR = {"trCursorMovimentacoes", "metaPaginaMovimentacoes"}
+
+
+def _fragmento(html):
+    # As páginas do 'Mais' são <tr> soltos; o próprio e-SAJ os envolve em
+    # <table><tbody> antes de ler.
+    return BeautifulSoup(f"<table><tbody>{html or ''}</tbody></table>", "html.parser")
+
+
+def cursor_movimentacoes(html):
+    """Cursor do próximo 'Mais', ou None se esta foi a última página.
+
+    Quatro lugares, conforme o grau e a página: na 1ª página do 1º grau fica
+    num input oculto; nas seguintes, numa linha oculta. No 2º grau, no próprio
+    link 'Mais' e depois numa linha meta que diz se há mais páginas. Na última
+    página o link vira 'Recolher' e passa a só esconder/mostrar: o critério de
+    parada é a AUSÊNCIA de cursor, não o sumiço do botão.
+    """
+    soup = _fragmento(html)
+    meta = soup.select_one("#metaPaginaMovimentacoes")
+    if meta is not None:
+        return meta.get("data-cursor") if meta.get("data-tem-mais-paginas") == "true" else None
+    for seletor, atributo in (
+        ("#cursorMovimentacoesPaginado", "value"),
+        ("#trCursorMovimentacoes", "data-cursor"),
+        ("#linkMaisRecolherMovimentacoes", "data-cursor"),
+    ):
+        el = soup.select_one(seletor)
+        if el is not None and el.get(atributo):
+            return el.get(atributo)
+    return None
+
+
+def recusa_movimentacoes(html):
+    """Texto da recusa do e-SAJ ('Não foi possível realizar a operação...'), ou
+    None. Vem com HTTP 200 — sem esta checagem, a recusa virava processo
+    coletado com zero movimentações."""
+    el = _fragmento(html).select_one(".mensagemErroMovimentacoes")
+    return el.get_text(" ", strip=True) if el is not None else None
+
+
+def tem_tabela_movimentacoes(html):
+    return _fragmento(html).select_one(SELETOR_MOVIMENTACOES) is not None
+
 
 class ParserCapaBase:
     GRAU = None  # 1 ou 2 — definido pela subclasse
@@ -109,7 +163,7 @@ class ParserCapaBase:
         return {
             "tem_classe": bool(self._extrair_classe()),
             "tem_partes": bool(partes),
-            "tem_movimentacoes": bool(self.soup.select_one("#tabelaTodasMovimentacoes")),
+            "tem_movimentacoes": bool(self.soup.select_one(SELETOR_MOVIMENTACOES)),
         }
 
     # --- campos simples ------------------------------------------------------
@@ -265,11 +319,18 @@ class ParserCapaBase:
     def _extrair_movimentacoes(self):
         """Data + descrição. Título e complemento ficam JUNTOS numa string, por
         decisão do projeto."""
-        tabela = self.soup.select_one("#tabelaTodasMovimentacoes")
         movs = []
-        if not tabela:
-            return movs
+        # TODAS as tabelas: no layout novo a 1ª página e as do 'Mais' ficam em
+        # tbodys separados. No antigo só existe uma, e nada muda.
+        for tabela in self.soup.select(SELETOR_MOVIMENTACOES):
+            movs.extend(self._movimentacoes_da_tabela(tabela))
+        return movs
+
+    def _movimentacoes_da_tabela(self, tabela):
+        movs = []
         for tr in tabela.find_all("tr"):
+            if tr.get("id") in _LINHAS_CURSOR:
+                continue
             tds = tr.find_all("td")
             if len(tds) < 2:
                 continue

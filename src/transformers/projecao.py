@@ -11,6 +11,7 @@ from .limpeza import (
     dedup_nomes,
     limpar_classe,
     limpar_texto,
+    moeda_do_valor,
     valor_para_float,
 )
 from ..status import (
@@ -74,6 +75,7 @@ def esqueleto(processo, grau, status):
         "vara": None,
         "juiz": None,
         "valor_acao": None,
+        "valor_acao_moeda": None,
         "data_distribuicao": None,
         "partes": {
             "autores": {"pessoas": [], "representantes": []},
@@ -116,6 +118,8 @@ def projetar(reg, filhos=None):
         final["vara"] = limpar_texto(bruto.get("vara"))
         final["juiz"] = limpar_texto(bruto.get("juiz"))
         final["valor_acao"] = valor_para_float(bruto.get("valor"))
+        if final["valor_acao"] is not None:
+            final["valor_acao_moeda"] = moeda_do_valor(bruto.get("valor"))
         final["data_distribuicao"] = data_para_iso(bruto.get("data_distribuicao"))
         final["partes"] = {
             "autores": _grupo(bruto.get("partes"), "ATIVO"),

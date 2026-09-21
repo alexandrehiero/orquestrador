@@ -12,15 +12,21 @@ persiste é o orquestrador. EsajIndisponivelError (circuit breaker) atravessa
 sem ser capturada: é parada geral, não falha deste processo.
 """
 
+import re
 from collections import namedtuple
 
-from .exceptions import EsajRequisicaoError
+from .exceptions import EsajError, EsajRequisicaoError
 from .page_state import (
     ClassificadorPagina,
     EstadoPagina,
     Identidade,
     escolher_na_selecao,
     verificar_identidade,
+)
+from .parser_base import (
+    cursor_movimentacoes,
+    recusa_movimentacoes,
+    tem_tabela_movimentacoes,
 )
 from .parser_primeiro_grau import ParserPrimeiroGrau
 from .parser_segundo_grau import ParserSegundoGrau
@@ -40,6 +46,17 @@ PARSER_POR_GRAU = {P.GRAU: P for P in (ParserPrimeiroGrau, ParserSegundoGrau)}
 
 #: grau 0 = indeterminado (não houve observação bem-sucedida).
 ResultadoColeta = namedtuple("ResultadoColeta", "status grau bruto motivo")
+
+# Layout novo (set/2026): a capa traz o botão 'Exibir movimentações' e o código
+# interno do processo num script — cpopg e cposg com sintaxes diferentes.
+_CODIGO_MOVIMENTACOES = re.compile(
+    r"codigoProcesso:\s*'([^']+)'|cdProcessoMovimentacoes\s*=\s*'([^']+)'"
+)
+_CONTAINER_MOVIMENTACOES = re.compile(r'<div id="containerMovimentacoes(?:Ajax)?"[^>]*>')
+
+#: Teto contra laço infinito: ~5.000 movimentações. O maior processo medido
+#: (0038356-27.1995, júri) tinha 605 em 121 páginas.
+LIMITE_PAGINAS_MOVIMENTACOES = 1000
 
 
 def _erro(motivo, grau):
@@ -67,6 +84,51 @@ def _capa_suspeita(completude):
             return "capa sem partes (possível seletor quebrado)"
         return "capa sem nenhum bloco extraído"
     return None
+
+
+def _exibir_movimentacoes(html, grau, client):
+    """Reproduz o clique em 'Exibir movimentações' e depois em 'Mais' até a
+    última página, e insere tudo no contêiner vazio, como fazem o `.html()` e o
+    `.append()` da página. O parser lê as movimentações de uma vez no fim.
+
+    Levanta EsajError em qualquer falha de qualquer página: o processo inteiro
+    volta para a fila, e NUNCA se grava lista parcial ou vazia. Capa no layout
+    antigo (sem o código) volta intacta.
+    """
+    m = _CODIGO_MOVIMENTACOES.search(html)
+    if not m:
+        return html
+    codigo = m.group(1) or m.group(2)
+
+    paginas, cursor = [], None
+    while True:  # clica em 'Mais' até acabar
+        pagina = client.carregar_movimentacoes(codigo, grau, cursor)
+        recusa = recusa_movimentacoes(pagina)
+        if recusa:
+            raise EsajError(
+                f"e-SAJ recusou as movimentações (página {len(paginas) + 1}): {recusa}"
+            )
+        if not paginas and not tem_tabela_movimentacoes(pagina):
+            raise EsajError("resposta de movimentações não reconhecida (página 1)")
+        paginas.append(pagina)
+        proximo = cursor_movimentacoes(pagina)
+        if proximo is None:
+            break  # não existe mais 'Mais'
+        if proximo == cursor or len(paginas) >= LIMITE_PAGINAS_MOVIMENTACOES:
+            raise EsajError(
+                f"paginação de movimentações não terminou após {len(paginas)} páginas"
+            )
+        cursor = proximo
+
+    bloco = paginas[0]
+    if len(paginas) > 1:
+        # As páginas do 'Mais' são <tr> soltos: vão num tbody próprio, que o
+        # parser conhece por SELETOR_MOVIMENTACOES.
+        bloco += ('<table><tbody id="movimentacoesDemaisPaginas">'
+                  + "".join(paginas[1:]) + "</tbody></table>")
+    container = _CONTAINER_MOVIMENTACOES.search(html)
+    pos = container.end() if container else len(html)
+    return html[:pos] + bloco + html[pos:]
 
 
 def coletar_um(np, client):
@@ -128,6 +190,11 @@ def coletar_um(np, client):
                     f"(grau {grau})",
                     grau,
                 )
+
+            try:
+                html = _exibir_movimentacoes(html, grau, client)
+            except EsajError as erro:  # rede, recusa do e-SAJ ou paginação sem fim
+                return _erro(f"falha ao exibir movimentações (grau {grau}): {erro}", grau)
 
             bruto = PARSER_POR_GRAU[grau](html).parse()
             suspeita = _capa_suspeita(bruto.get("completude") or {})
