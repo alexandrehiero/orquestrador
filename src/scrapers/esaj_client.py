@@ -218,23 +218,31 @@ class EsajClient:
         url = f"{self.BASE}/{instancia_do_grau(grau)}/search.do"
         return self._get(url, params=numero_processo.params_busca(grau))
 
-    def abrir_detalhe(self, href_ou_codigo, grau):
+    def abrir_detalhe(self, href_ou_codigo, numero_processo, grau):
         """Abre a página de capa. Aceita href completo, path relativo ou o
-        `processo.codigo` interno do SAJ (opaco, ex.: '1H000AX8O0000')."""
+        `processo.codigo` interno do SAJ (opaco, ex.: '1H000AX8O0000').
+
+        O href da tela de seleção já traz os parâmetros da via (inclusive o da
+        Consulta de Requisitórios); o código opaco não traz nada, então eles vêm
+        do `numero_processo`. Sem isso, um processo do DEPRE aberto pelo código
+        responderia 'Usuário sem acesso ao processo.'"""
         alvo = str(href_ou_codigo)
         if alvo.startswith("http"):
             return self._get(alvo)
         if alvo.startswith("/"):
             return self._get(self.BASE + alvo)
         url = f"{self.BASE}/{instancia_do_grau(grau)}/show.do"
-        return self._get(url, params={"processo.codigo": alvo})
+        params = {"processo.codigo": alvo, **numero_processo.params_via(grau)}
+        return self._get(url, params=params)
 
     def carregar_movimentacoes(self, codigo, grau, cursor=None):
         """Equivale ao clique em 'Exibir movimentações' (sem cursor) ou em 'Mais'
         (com o cursor da página anterior): o e-SAJ deixou de pôr as
         movimentações no HTML da capa e passou a carregá-las por AJAX, 5 por vez.
         O nome do parâmetro difere entre cpopg e cposg. Só funciona na MESMA
-        sessão que abriu a capa — sem ela, o e-SAJ devolve mensagem de erro.
+        sessão que abriu a capa — sem ela, o e-SAJ devolve mensagem de erro. Na
+        Consulta de Requisitórios é igual: quem libera é a capa aberta com o
+        parâmetro da via, não esta chamada.
 
         O 'Exibir' passa pela cadência; os 'Mais' saem sem espera, por decisão
         do projeto. Se o e-SAJ recusar por excesso, a recusa vira

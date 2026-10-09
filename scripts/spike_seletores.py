@@ -113,7 +113,7 @@ def diagnosticar(numero, client):
         print("  número inválido (não tem 20 dígitos)")
         return
     print(f"  dígitos={np.digitos} | origem={np.origem} | DV válido={np.dv_valido} "
-          f"| graus a tentar={np.graus_a_tentar}")
+          f"| graus a tentar={np.graus_a_tentar} | requisitório={np.requisitorio}")
 
     for grau in (1, 2):  # o spike consulta SEMPRE os dois, para comparar
         print(f"\n-- grau {grau} --")

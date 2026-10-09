@@ -18,6 +18,9 @@ GRAU_SEGUNDO = 2
 
 _INSTANCIA_POR_GRAU = {GRAU_PRIMEIRO: "cpopg", GRAU_SEGUNDO: "cposg"}
 
+#: Foro 500 do TJSP: DEPRE (Diretoria de Execuções de Precatórios e Cálculos).
+ORIGEM_DEPRE = "0500"
+
 
 def instancia_do_grau(grau):
     """1 -> 'cpopg', 2 -> 'cposg'. Ponto único de tradução domínio -> e-SAJ."""
@@ -128,6 +131,25 @@ class NumeroProcesso:
             return (GRAU_SEGUNDO,)
         return (GRAU_PRIMEIRO, GRAU_SEGUNDO)
 
+    # --- roteamento de via ---------------------------------------------------
+    @property
+    def requisitorio(self):
+        """Origem '0500' = DEPRE (precatórios). Na consulta comum do 1º grau o
+        e-SAJ responde 'Usuário sem acesso ao processo.'; esses processos só
+        abrem pela Consulta de Requisitórios."""
+        return self.origem == ORIGEM_DEPRE
+
+    def params_via(self, grau):
+        """O que a via de consulta exige em TODA página do processo — busca e
+        detalhe. A Consulta de Requisitórios é o MESMO cpopg com um parâmetro a
+        mais, e ele não pode ir em toda busca: num processo comum o e-SAJ
+        responde 'Não existem informações disponíveis' (testado em 2026-10-09).
+        As movimentações não levam o parâmetro: valem pela sessão que abriu a
+        capa."""
+        if self.requisitorio and instancia_do_grau(grau) == "cpopg":
+            return {"consultaDeRequisitorios": "true"}
+        return {}
+
     # --- params de busca -----------------------------------------------------
     def params_busca(self, grau):
         """Query string do search.do. ÚNICO ponto a ajustar se o e-SAJ mudar."""
@@ -142,6 +164,7 @@ class NumeroProcesso:
                 "foroNumeroUnificado": self.origem,
                 "dadosConsulta.valorConsultaNuUnificado": self.mascara,
                 "dadosConsulta.valorConsulta": "",
+                **self.params_via(grau),
             }
         return {
             "conversationId": "",

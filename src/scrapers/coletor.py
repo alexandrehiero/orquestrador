@@ -155,7 +155,7 @@ def coletar_um(np, client):
             verificada = escolha.verificada
             veio_de_selecao = True
             try:
-                html = client.abrir_detalhe(escolha.destino, grau)
+                html = client.abrir_detalhe(escolha.destino, np, grau)
             except EsajRequisicaoError as erro:
                 return _erro(f"falha ao abrir detalhe (grau {grau}): {erro}", grau)
             estado = ClassificadorPagina(html).classificar()

@@ -55,6 +55,7 @@ _ROTULOS_PASSIVO = {
     "apelado", "apelada", "recorrido", "recorrida",
     "devedor", "devedora", "suscitado", "suscitada",
     "promovido", "promovida", "demandado", "demandada", "querelado", "querelada",
+    "ent. devedora",  # precatórios (DEPRE): a entidade pública que deve.
 }
 # 'interessado/interessada' NÃO entram em nenhum dos dois: é rótulo neutro
 # (jurisdição voluntária, terceiros). Vão para polo OUTRO.
