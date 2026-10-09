@@ -3,7 +3,7 @@
 | Metadado            | Valor                                      |
 |---------------------|--------------------------------------------|
 | Data de criação     | 2026-08-10                                 |
-| Data de atualização | 2026-09-21                                 |
+| Data de atualização | 2026-10-09                                 |
 | Responsável(is)     | @alexandrehiero                            |
 | Cobertura atual     | todo o `src/` (13 módulos) e `scripts/`    |
 
@@ -101,7 +101,7 @@ Não há suíte automatizada no repositório. O obstáculo não é técnico: `pa
 
 O que existe é `scripts/checar_offline.py`, que reprocessa esses HTMLs sem nenhuma requisição e imprime o resultado para leitura humana. **Não é teste:** sem asserção, sem runner, sem veredito passa/falha.
 
-As 96 invariantes que valeria fixar, com a ordem sugerida, estão em [backlog de testes](backlog_testes.md).
+As 97 invariantes que valeria fixar, com a ordem sugerida, estão em [backlog de testes](backlog_testes.md).
 
 ## Histórico de Modificações
 
@@ -113,3 +113,4 @@ As 96 invariantes que valeria fixar, com a ordem sugerida, estão em [backlog de
 | 2026-08-11 | @alexandrehiero | Cobertura estendida a `scripts/`: nova §5 (6 itens); "Ausência de testes" passou a §6 |
 | 2026-09-04 | @alexandrehiero | Divisão em três páginas: invariantes de teste e itens encerrados ganharam página própria; §6 virou ponteiro |
 | 2026-09-21 | @alexandrehiero | Layout novo do e-SAJ: 2 itens em §2, 2 em §4 e 1 em §5; contagem de invariantes corrigida para 96 |
+| 2026-10-09 | @alexandrehiero | Contagem de invariantes atualizada para 97 (Consulta de Requisitórios) |

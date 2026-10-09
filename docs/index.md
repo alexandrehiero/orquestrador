@@ -83,7 +83,7 @@ Para entender o pipeline lendo código, comece por [`status`](src/status.md) e [
 |---|---|---|
 | — | [`status`](src/status.md) | Vocabulário de status — fonte única, sem imports |
 | `scrapers` | [`exceptions`](src/scrapers/exceptions.md) | Hierarquia de erros; o disjuntor fica fora dela de propósito |
-| `scrapers` | [`numero_processo`](src/scrapers/numero_processo.md) | Value object do CNJ; roteamento de grau |
+| `scrapers` | [`numero_processo`](src/scrapers/numero_processo.md) | Value object do CNJ; roteamento de grau e de via |
 | `scrapers` | [`esaj_client`](src/scrapers/esaj_client.md) | Único ponto que toca a rede; cadência e circuito |
 | `scrapers` | [`page_state`](src/scrapers/page_state.md) | Que página é esta? E é do processo pedido? |
 | `scrapers` | [`parser_base`](src/scrapers/parser_base.md) | Extração da capa em dict **bruto** |
@@ -132,4 +132,4 @@ uv run mkdocs build --strict        # falha em qualquer link quebrado
 
 ## Estado atual
 
-Não há suíte de testes automatizados. O [backlog de testes](backlog_testes.md) lista as 96 invariantes que valeria fixar, com a ordem sugerida por risco/custo, e [`spike_seletores`](scripts/spike_seletores.md) já produz os fixtures — os HTMLs de `data/spike/` são páginas reais do e-SAJ, e a maior parte da camada de scraping é composta de funções puras sobre string.
+Não há suíte de testes automatizados. O [backlog de testes](backlog_testes.md) lista as 97 invariantes que valeria fixar, com a ordem sugerida por risco/custo, e [`spike_seletores`](scripts/spike_seletores.md) já produz os fixtures — os HTMLs de `data/spike/` são páginas reais do e-SAJ, e a maior parte da camada de scraping é composta de funções puras sobre string.

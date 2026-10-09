@@ -3,7 +3,7 @@
 | Metadado            | Valor                                      |
 |---------------------|--------------------------------------------|
 | Data de criação     | 2026-08-10                                 |
-| Data de atualização | 2026-09-21                                 |
+| Data de atualização | 2026-10-09                                 |
 | Responsável(is)     | @alexandrehiero                            |
 | Dependências principais | `re` — só `src/scrapers/exceptions.py` do projeto |
 
@@ -25,6 +25,7 @@ Há uma segunda motivação. O e-SAJ organiza a consulta por **instância** (`cp
 - **`instancia_do_grau` é o ponto único de tradução domínio → e-SAJ** — grau desconhecido vira `ValueError` com o valor recebido, em vez de um `KeyError` cru.
 - **`params_busca(grau)` concentra a query string do `search.do`** — e o método existe por um detalhe concreto: **os dois graus usam nomes de parâmetro diferentes para a mesma coisa** (`dadosConsulta.valorConsultaNuUnificado` no 1º, `dePesquisaNuUnificado` no 2º). Espalhar isso pelo cliente HTTP significaria dois blocos de `if instancia == "cpopg"` em lugares distintos. É o único ponto a ajustar se o e-SAJ mudar.
 - **O roteamento de grau é derivado da própria estrutura do número** — origem `0000` indica processo autuado originariamente no 2º grau (Res. 65/2008, art. 1º §1º-A): agravo de instrumento, ação rescisória. `graus_a_tentar` devolve `(2,)` nesses casos e `(1, 2)` nos demais. Uma requisição economizada por agravo, sem heurística: é o que a Resolução define.
+- **A via de consulta também é derivada do número** — origem `0500` é o DEPRE (precatórios), e esses processos respondem "Usuário sem acesso ao processo." na consulta comum do 1º grau: só abrem pela Consulta de Requisitórios, que é o **mesmo** `cpopg/search.do` com `consultaDeRequisitorios=true`. `requisitorio` diz se o número é desse foro e `params_via(grau)` devolve o parâmetro, que `params_busca` embute na busca e o [`esaj_client`](esaj_client.md) repete ao abrir o detalhe pelo código. `graus_a_tentar` não muda: o 2º grau só é consultado se a via de requisitórios disser `NAO_ENCONTRADO`.
 - **`do_tjsp` valida o alvo antes de gastar requisição** — segmento `8` (Justiça Estadual) e tribunal `26` (São Paulo). Com a cadência de uma requisição a cada 1,1–1,6 s, descartar na leitura do arquivo é qualitativamente diferente de descobrir na rede.
 - **`__eq__` e `__hash__` operam sobre os dígitos** — dois números construídos a partir de grafias diferentes (com máscara, sem, com ponto no lugar do hífen) são iguais e colidem no mesmo `hash`, porque `so_digitos` normaliza tudo na construção.
 
@@ -38,12 +39,15 @@ Há uma segunda motivação. O e-SAJ organiza a consulta por **instância** (`cp
 | Falar em `'cpopg'`/`'cposg'` no domínio inteiro | O vocabulário do e-SAJ vazaria para o coletor, o banco e a base final. Se o portal renomear as instâncias, a mudança teria de ser rastreada em toda parte. |
 | Montar a query string dentro do `EsajClient` | O cliente passaria a conhecer a estrutura do CNJ. Como os dois graus usam nomes distintos, o `if` de instância apareceria duas vezes, em módulos diferentes. |
 | Tentar sempre os dois graus, na ordem 1 → 2 | Desperdiçaria uma requisição em todo processo originário do 2º grau, que por definição nunca existiu em 1ª instância. |
+| Consultar o 1º grau comum e, no "sem acesso", repetir com o parâmetro de requisitórios | Duas requisições por processo num foro com cerca de 221 mil números, e a página "sem acesso" teria de virar um estado reconhecido só para servir de gatilho. A origem `0500` já diz a via antes da primeira requisição. |
+| Mandar `consultaDeRequisitorios=true` em toda busca do 1º grau | Testado em 2026-10-09: num processo comum o e-SAJ responde "Não existem informações disponíveis" — todo o 1º grau viraria `NAO_ENCONTRADO`. |
 | `NumeroProcesso` mutável, sem `__slots__` | Permitiria anexar estado por fora (`np.grau`, `np.status`) e criar duas fontes de verdade para a mesma informação. |
 
 ## Limitações Conhecidas
 
 - **`dv_valido` não é consultado na construção.** É possível ter um `NumeroProcesso` com 20 dígitos e DV incorreto circulando — decisão, não descuido, mas exige que cada ponto de entrada lembre de checar. `ler_numeros` checa, e a lista de órfãos passa pelo mesmo `ler_numeros`.
 - **`do_tjsp` cobre apenas segmento e tribunal.** Um número de São Paulo com origem inexistente passa na validação e só será descoberto quando o e-SAJ responder `NAO_ENCONTRADO`.
+- **Só a origem `0500` é roteada para a Consulta de Requisitórios.** Outra origem que responda "sem acesso" na consulta comum continua em `DESCONHECIDO` e vira `erro_transitorio`; nenhuma foi observada.
 - **`__eq__` e `__hash__` não são exercitados por nenhum caminho atual.** A desduplicação em `ler_numeros` é feita sobre `np.digitos` (strings), não sobre instâncias. Existem para quando alguém quiser usar o objeto como chave.
 - **Números anteriores ao padrão CNJ não são representáveis.** Um `'26747/2005'` é rejeitado no construtor. O projeto lida com isso fora daqui: o [`parser_segundo_grau`](parser_segundo_grau.md) guarda a string original e o [`vinculo`](../transformers/vinculo.md) a transforma em observação.
 - **`so_digitos` é reimplementado em outros cinco lugares.** Ver [backlog §1](../../backlog.md).
@@ -60,6 +64,7 @@ np.do_tjsp                    # True  -> segmento 8, tribunal 26
 np.graus_a_tentar             # (1, 2)
 
 NumeroProcesso("3000004-25.2019.8.26.0000").graus_a_tentar   # (2,)  <- origem '0000'
+NumeroProcesso("0023593-13.2023.8.26.0500").params_via(1)    # {'consultaDeRequisitorios': 'true'}  <- origem '0500'
 NumeroProcesso.tentar("lixo")                                 # None <- não levanta
 instancia_do_grau(1)                                          # 'cpopg'
 ```
@@ -68,9 +73,9 @@ instancia_do_grau(1)                                          # 'cpopg'
 
 ## Testes e Validação
 
-Não há suíte automatizada. A validação em uso é a inspeção manual via `scripts/spike_seletores.py`, que reporta `digitos`, `origem`, `dv_valido` e `graus_a_tentar` antes de qualquer requisição, mais o `numeros_invalidos.txt` gerado pela opção 1, que registra número e motivo da rejeição linha a linha.
+Não há suíte automatizada. A validação em uso é a inspeção manual via `scripts/spike_seletores.py`, que reporta `digitos`, `origem`, `dv_valido`, `graus_a_tentar` e `requisitorio` antes de qualquer requisição, mais o `numeros_invalidos.txt` gerado pela opção 1, que registra número e motivo da rejeição linha a linha.
 
-**Este é o módulo mais barato de cobrir do projeto inteiro:** é puro, não faz I/O e todas as respostas são deriváveis de um número conhecido. As 4 invariantes estão no [backlog de testes](../../backlog_testes.md).
+**Este é o módulo mais barato de cobrir do projeto inteiro:** é puro, não faz I/O e todas as respostas são deriváveis de um número conhecido. As 5 invariantes estão no [backlog de testes](../../backlog_testes.md).
 
 ## Histórico de Modificações
 
@@ -79,3 +84,4 @@ Não há suíte automatizada. A validação em uso é a inspeção manual via `s
 | 2026-08-10 | @alexandrehiero | Criação e testes iniciais |
 | 2026-09-04 | @alexandrehiero | Reescrita enxuta (≤150 linhas): código copiado removido; invariantes migradas para o backlog de testes |
 | 2026-09-21 | @alexandrehiero | Cadência citada atualizada para 1,1–1,6 s |
+| 2026-10-09 | @alexandrehiero | Origem `0500` (DEPRE): `requisitorio` e `params_via`; `params_busca(1)` leva `consultaDeRequisitorios=true` |

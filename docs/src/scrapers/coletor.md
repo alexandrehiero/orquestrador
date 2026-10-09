@@ -3,7 +3,7 @@
 | Metadado            | Valor                                      |
 |---------------------|--------------------------------------------|
 | Data de criação     | 2026-08-10                                 |
-| Data de atualização | 2026-09-21                                 |
+| Data de atualização | 2026-10-09                                 |
 | Responsável(is)     | @alexandrehiero                            |
 | Dependências principais | `collections.namedtuple`, `re` — sem dependências externas |
 
@@ -33,6 +33,7 @@ O resultado é um registro perfeitamente formado, com dados verdadeiros, sob o g
 - **`PARSER_POR_GRAU` é derivado do atributo `GRAU`, não escrito à mão** — `{1: ParserSegundoGrau}` é um dicionário válido: nada falha, e o parser errado devolve campos plausíveis com `juiz: None`. Derivado, o erro não tem como ser escrito. É público de propósito: o spike importa deste dicionário, para diagnosticar exatamente o caminho que a coleta percorre.
 - **`_exibir_movimentacoes` clica em "Exibir" e em "Mais" até não haver cursor** — desde set/2026 a capa traz só um botão e o código interno do processo num script; as movimentações chegam por AJAX, 5 por vez (ver [`esaj_client`](esaj_client.md)). O critério de parada é a **ausência de cursor**, não o sumiço do botão: na última página o link vira "Recolher" e passa a só esconder e mostrar, então clicar até ele sumir nunca terminaria. As páginas são inseridas no contêiner da capa, como faz o JavaScript do portal, e o [parser](parser_base.md) lê tudo de uma vez. Capa sem o código (layout antigo) segue intacta.
 - **Movimentações completas ou nenhuma** — recusa do e-SAJ em qualquer página, 1ª página sem tabela, cursor repetido ou mais de `LIMITE_PAGINAS_MOVIMENTACOES` (1000) levantam `EsajError`, e o processo **inteiro** volta como `erro_transitorio`. Uma lista parcial é indistinguível de uma completa depois de virar JSONL, e as páginas perdidas seriam justamente as mais antigas — onde está a movimentação de origem que o [`vinculo`](../transformers/vinculo.md) usa para achar o pai.
+- **Processo do DEPRE (origem `0500`) é coletado no grau 1, pela Consulta de Requisitórios** — o coletor não tem ramo próprio para isso: a via vem do número (ver [`numero_processo`](numero_processo.md)) e chega pronta em `client.buscar` e em `client.abrir_detalhe`, que recebe o `np`. A máquina de estados, o parser e a chave `(processo, 1)` são os mesmos de qualquer capa de `cpopg`.
 - **O vocabulário de status vem de fora** — o candidato natural seria o `sqlite_store`, que valida e grava os status; mas esta é uma função que **não conhece o banco**, e importar de `store/` inverteria a dependência sem ganho. Ver [`status`](../status.md).
 
 ### A máquina de estados
@@ -115,7 +116,7 @@ else:
 
 ## Testes e Validação
 
-Não há suíte automatizada. `scripts/spike_seletores.py` exercita as mesmas peças e importa daqui o `PARSER_POR_GRAU`, mas **não** chama `coletar_um` — consulta sempre os dois graus, o oposto da lógica de roteamento deste módulo. É o módulo com a melhor relação risco/facilidade de teste: `coletar_um` aceita um `client` dublê que devolve HTMLs de `data/spike/`, sem rede. Foi assim que a paginação foi conferida em 2026-09-21: com um dublê, 3 páginas saíram na ordem e sem a linha do cursor, e recusa na 1ª e na 3ª página, resposta irreconhecível e cursor repetido viraram `erro_transitorio`. Ao vivo, as contagens bateram com a paginação manual: 54, 35, 52 e 605. As 11 invariantes estão no [backlog de testes](../../backlog_testes.md).
+Não há suíte automatizada. `scripts/spike_seletores.py` exercita as mesmas peças e importa daqui o `PARSER_POR_GRAU`, mas **não** chama `coletar_um` — consulta sempre os dois graus, o oposto da lógica de roteamento deste módulo. É o módulo com a melhor relação risco/facilidade de teste: `coletar_um` aceita um `client` dublê que devolve HTMLs de `data/spike/`, sem rede. Foi assim que a paginação foi conferida em 2026-09-21: com um dublê, 3 páginas saíram na ordem e sem a linha do cursor, e recusa na 1ª e na 3ª página, resposta irreconhecível e cursor repetido viraram `erro_transitorio`. Ao vivo, as contagens bateram com a paginação manual: 54, 35, 52 e 605. Em 2026-10-09 a via de requisitórios foi conferida ao vivo: `0023593-13.2023.8.26.0500` saiu `coletado` no grau 1, com 20 movimentações; uma seleção que abre página de senha, `segredo_justica`; um número `0500` inexistente, `sem_dados`. As 11 invariantes estão no [backlog de testes](../../backlog_testes.md).
 
 ## Histórico de Modificações
 
@@ -126,3 +127,4 @@ Não há suíte automatizada. `scripts/spike_seletores.py` exercita as mesmas pe
 | 2026-08-10 | @alexandrehiero | `_erro` passa a exigir o `grau`; docstring registra por que o grau tentado não vira coluna |
 | 2026-09-04 | @alexandrehiero | Reescrita enxuta (≤150 linhas): narrativa das 12 decisões virou lista de tópicos; código copiado removido; invariantes migradas para o backlog de testes |
 | 2026-09-21 | @alexandrehiero | Layout novo do e-SAJ: `_exibir_movimentacoes` clica em "Exibir" e "Mais" até o fim; qualquer falha devolve o processo inteiro como `erro_transitorio` |
+| 2026-10-09 | @alexandrehiero | Origem `0500` (DEPRE) pela Consulta de Requisitórios: `abrir_detalhe` recebe o `np`; máquina de estados inalterada |

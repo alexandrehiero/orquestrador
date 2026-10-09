@@ -3,7 +3,7 @@
 | Metadado            | Valor                                      |
 |---------------------|--------------------------------------------|
 | Data de criação     | 2026-08-10                                 |
-| Data de atualização | 2026-09-21                                 |
+| Data de atualização | 2026-10-09                                 |
 | Responsável(is)     | @alexandrehiero                            |
 | Dependências principais | `beautifulsoup4`, `re`, `unicodedata` (biblioteca padrão) |
 
@@ -22,6 +22,7 @@ Por isso o parser guarda `"Cumprimento de Sentença contra a Fazenda Pública (0
 - **Partes viram lista de dicts com o rótulo real preservado** — cinco listas paralelas (`autores`, `reus`, `advogados_autores`…) obrigam a decidir o polo no momento da extração e descartam a informação que permitiria revisar essa decisão. Guardando `tipo_parte` (`Exeqte`, `Reqdo`) ao lado de `polo`, o rótulo original sobrevive. É a lógica do bruto, aplicada dentro do bruto.
 - **O polo é classificado por match exato na célula de tipo** — a célula tem uma ou duas palavras; a linha inteira tem o nome da parte e os advogados. Procurar `"re"` na linha casa com qualquer nome que contenha essas letras.
 - **Três correções de vocabulário jurídico frente ao pipeline anterior** — `credor/credora` movidos para ATIVO (na execução, o credor é quem executa); `interessado/interessada` removidos de PASSIVO (rótulo neutro, vai para OUTRO); e as flexões que faltavam e caíam em OUTRO em silêncio (apelada, recorrida, impetrada, suscitante/suscitado, devedor/devedora).
+- **`Ent. Devedora` é PASSIVO** — é o rótulo da entidade pública que deve nos precatórios do DEPRE; o outro polo vem como `Reqte`. Sem ele no vocabulário, o precatório sairia com `reus` vazio no documento final e sem nenhuma observação, porque os autores estariam preenchidos.
 - **`_rotulo_estrito` compara o texto DIRETO por igualdade** — `find(string=True, recursive=False)` ignora o texto dos filhos, senão um `<div>` contêiner que envolve meia página "contém" o rótulo e casaria. E a igualdade, não `in`, é o que impede `'Juizado Especial Cível'` de casar com `'Juiz'`.
 - **`_juiz_valido` nunca devolve a Vara como juiz** — uma lista de bloqueio (`vara`, `juizado`, `foro`, `camara`, `orgao`…) reprova o valor que parece nome de órgão. Campo vazio é ausência honesta; campo com o nome da vara é dado **errado** que qualquer agregação por juiz consumiria sem perceber.
 - **A comparação com a lista de bloqueio é por palavra inteira** — a versão por substring reprovava sobrenomes reais: `'Alvarado'` contém `vara`, `'Areal'` contém `area`. O juiz virava `None` sem sintoma, **disfarçado da política declarada** "na dúvida, ausente" — e não há bandeira de `completude` para o campo que distinguisse "não achei" de "achei e joguei fora".
@@ -95,3 +96,4 @@ Não há suíte automatizada. A validação em uso é `scripts/spike_seletores.p
 | 2026-08-10 | @alexandrehiero | `_juiz_valido` compara por palavra inteira; `SELETORES_SITUACAO` confirmado em HTML real pelo spike; `GRAU` passa a alimentar `PARSER_POR_GRAU` |
 | 2026-09-04 | @alexandrehiero | Reescrita enxuta (≤150 linhas): narrativa das 12 decisões virou lista de tópicos; código copiado removido; "Pontos em aberto" migrou para o backlog e as invariantes para o backlog de testes |
 | 2026-09-21 | @alexandrehiero | `SELETOR_MOVIMENTACOES` para o layout novo do e-SAJ; extração de todas as tabelas; `cursor_movimentacoes` e `recusa_movimentacoes` |
+| 2026-10-09 | @alexandrehiero | `Ent. Devedora` (precatórios do DEPRE) entra em `_ROTULOS_PASSIVO` |

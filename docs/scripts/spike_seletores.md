@@ -3,7 +3,7 @@
 | Metadado            | Valor                                      |
 |---------------------|--------------------------------------------|
 | Data de criação     | 2026-08-10                                 |
-| Data de atualização | 2026-09-21                                 |
+| Data de atualização | 2026-10-09                                 |
 | Responsável(is)     | @alexandrehiero                            |
 | Dependências principais | `beautifulsoup4`, e os módulos de `src/scrapers/` |
 
@@ -79,7 +79,7 @@ O fechamento imprime `client.estatisticas()`, o que permite conferir requisiçõ
 | [`coletor`](../src/scrapers/coletor.md) | `PARSER_POR_GRAU` — o mesmo roteamento da coleta real |
 | [`esaj_client`](../src/scrapers/esaj_client.md) | `EsajClient` com padrões; `estatisticas()` no fechamento |
 | [`exceptions`](../src/scrapers/exceptions.md) | `EsajError` capturada por grau |
-| [`numero_processo`](../src/scrapers/numero_processo.md) | `tentar`, e o relatório de `origem`/`dv_valido`/`graus_a_tentar` |
+| [`numero_processo`](../src/scrapers/numero_processo.md) | `tentar`, e o relatório de `origem`/`dv_valido`/`graus_a_tentar`/`requisitorio` |
 | [`page_state`](../src/scrapers/page_state.md) | `ClassificadorPagina`, `escolher_na_selecao`, `verificar_identidade` |
 | [`parser_base`](../src/scrapers/parser_base.md) | `SELETORES_SITUACAO` e `ROTULOS_DISTRIBUICAO`, auditados nos relatórios |
 
@@ -102,3 +102,4 @@ Não importa nada de `store/`, `transformers/` nem `aggregators/` — o spike pa
 | 2026-08-11 | @alexandrehiero | Criação |
 | 2026-09-04 | @alexandrehiero | Reescrita enxuta (≤150 linhas): narrativa das 8 decisões virou lista de tópicos; código copiado removido; "Pontos em aberto" migrou para o backlog |
 | 2026-09-21 | @alexandrehiero | Cadência padrão 1,1–1,6 s; limitação do layout novo: o spike não clica em "Exibir movimentações" |
+| 2026-10-09 | @alexandrehiero | Cabeçalho do diagnóstico informa `requisitório`; número de origem `0500` é consultado pela Consulta de Requisitórios, por `client.buscar` |

@@ -3,7 +3,7 @@
 | Metadado            | Valor                                      |
 |---------------------|--------------------------------------------|
 | Data de criação     | 2026-09-04                                 |
-| Data de atualização | 2026-09-21                                 |
+| Data de atualização | 2026-10-09                                 |
 | Responsável(is)     | @alexandrehiero                            |
 | Origem              | seção "Testes e Validação" dos 14 ADRs de `src/` |
 
@@ -18,7 +18,7 @@ Não há suíte automatizada no repositório. Existem duas coisas próximas:
 - `scripts/checar_offline.py` reprocessa os HTMLs de `data/spike/` **sem nenhuma requisição** e imprime estado, identidade, campos e vínculo de cada capa. Não há asserção nem veredito: a saída é lida por uma pessoa. Cobre `page_state`, `numero_processo`, os dois parsers e `vinculo`; **não** cobre `sqlite_store`, `exportador`, `projecao`, `limpeza` nem `coletar_um`.
 - A validação operacional do [`menu`](scripts/menu.md): contagem por status impressa ao fim de cada execução, e `falhas_pendentes.txt` / `revisao_manual.txt` regenerados do banco.
 
-Os fixtures já existem: os 14 arquivos `data/spike/<numero>_g<grau>.html` são HTML real do e-SAJ, e a maior parte da camada de análise é composta de funções puras sobre string.
+Os fixtures já existem: os 16 arquivos `data/spike/<numero>_g<grau>.html` são HTML real do e-SAJ, e a maior parte da camada de análise é composta de funções puras sobre string.
 
 ## Ordem sugerida
 
@@ -59,12 +59,13 @@ Por relação risco/custo, conforme as próprias páginas de origem:
 | `numero_processo` | `dv_esperado` reproduz o DV de um número real conhecido |
 | `numero_processo` | `origem == "0000"` ⇒ `graus_a_tentar == (2,)`; caso contrário `(1, 2)` |
 | `numero_processo` | `params_busca(1)` e `params_busca(2)` devolvem conjuntos de chaves diferentes |
+| `numero_processo` | `origem == "0500"` ⇒ `params_busca(1)` leva `consultaDeRequisitorios=true`; `params_busca(2)` e as demais origens, não |
 | `page_state` | Capa com tabela de partes **não** é `LISTA_SELECAO` (guarda de `_e_selecao`) |
 | `page_state` | Página com o formulário "Identificar-se" **não** é `SENHA_SEGREDO` |
 | `page_state` | HTML vazio ou irreconhecível devolve `DESCONHECIDO`, nunca `DADOS_CAPA` nem `NAO_ENCONTRADO` |
 | `page_state` | `escolher_na_selecao` devolve `verificada=True` com o número exato num rádio que **não** é o primeiro |
 | `page_state` | `verificar_identidade` devolve `DIVERGE`, não `INDETERMINADO`, quando há CNJs e nenhum é o alvo |
-| `parser_base` | `'Exeqte'` e `'Credor'` são `ATIVO`; `'Reqdo'` e `'Devedor'`, `PASSIVO`; `'Interessado'`, `OUTRO` |
+| `parser_base` | `'Exeqte'` e `'Credor'` são `ATIVO`; `'Reqdo'`, `'Devedor'` e `'Ent. Devedora'`, `PASSIVO`; `'Interessado'`, `OUTRO` |
 | `parser_base` | `_rotulo_estrito("Juiz")` **não** casa com `'Juizado Especial Cível'` |
 | `parser_base` | `_juiz_valido('Alvarado')` e `_juiz_valido('Areal')` são `True`; `'1ª Vara da Fazenda Pública'` é `False` |
 | `parser_base` | Capa com movimentações e sem partes produz `tem_partes: False` e `tem_movimentacoes: True` |
@@ -145,3 +146,4 @@ Por relação risco/custo, conforme as próprias páginas de origem:
 |------|---------|------------|
 | 2026-09-04 | @alexandrehiero | Criação: consolidação das 89 invariantes antes dispersas na seção "Testes e Validação" dos 14 ADRs de `src/` |
 | 2026-09-21 | @alexandrehiero | Layout novo do e-SAJ e moeda: 4 invariantes novas (`coletor` ×2, `esaj_client`, `limpeza`); a de `dedup_movimentacoes` reescrita — total 96 |
+| 2026-10-09 | @alexandrehiero | Consulta de Requisitórios (origem `0500`): 1 invariante nova em `numero_processo`; a de polo ganhou `Ent. Devedora` — total 97 |
