@@ -5,6 +5,7 @@ data/
 *.tmp
 __pycache__/
 .env
+data_final/
 
 # Ambiente virtual criado por `uv sync`
 .venv/
