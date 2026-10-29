@@ -64,6 +64,7 @@ nav:
 
   - Guias:
       - Configuração do ambiente: guias/configuracao_ambiente.md
+      - Atualizar um notebook: guias/atualizar_notebook.md
       - Padrão de logging: guias/logging_padrao.md
 
   - Módulos (src):
@@ -84,13 +85,22 @@ nav:
           - Limpeza e normalização: src/transformers/limpeza.md
           - Derivação do vínculo: src/transformers/vinculo.md
           - Projeção do documento final: src/transformers/projecao.md
+          - Correção monetária: src/transformers/monetario.md
+          - Nomes das partes: src/transformers/nomes.md
+          - Estrutura do GPDR: src/transformers/estrutura_gpdr.md
       - aggregators:
           - Export da base final: src/aggregators/exportador.md
+          - Auditoria e consolidação do JSONL: src/aggregators/consolidacao.md
+          - Movimentações do Atos da PGE: src/aggregators/atos_pge.md
+          - Export da estrutura do GPDR: src/aggregators/exportador_gpdr.md
 
   - Scripts:
       - Template de ADR de script: scripts/template_script.md
       - Orquestrador interativo (menu): scripts/menu.md
       - Spike de seletores: scripts/spike_seletores.md
+
+  - Scripts finais:
+      - Base final de um ano: scripts_final/preparar_base_final.md
 
   - Notebooks:
       - Template de ADR de notebook: notebooks/template_notebook.md

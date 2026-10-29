@@ -3,7 +3,7 @@
 | Metadado            | Valor                                      |
 |---------------------|--------------------------------------------|
 | Data de criação     | 2026-09-04                                 |
-| Data de atualização | 2026-09-21                                 |
+| Data de atualização | 2026-10-29                                 |
 | Responsável(is)     | @alexandrehiero                            |
 | Origem              | seção "Itens encerrados" de [backlog.md](backlog.md) |
 
@@ -54,6 +54,9 @@ Um item chega aqui quando o código muda e a página de origem passa a registrar
 | Valor da ação sem o símbolo da moeda | `limpeza`, `projecao` | Campo `valor_acao_moeda`, com `R$` como padrão; `valor_acao` segue número |
 | Movimentações do JSON em duas direções (dias crescentes, mesmo dia decrescente) | `limpeza` | `dedup_movimentacoes` deixou de ordenar: a lista sai na ordem do e-SAJ |
 | Cadência alterada no `EsajClient` não chegava ao menu, que cria o `Pacer` à parte | `esaj_client`, `menu` | Padrão 1,1–1,6 s também no `Pacer`; o cabeçalho do menu lê o valor dele |
+| A opção 2 reclassificava a origem dos órfãos como `lista` | `menu`, `sqlite_store` | `registrar_resultado` reaproveita a origem de uma linha anterior do número |
+| `with self.con:` não abria transação: com `isolation_level=None`, cada comando era gravado sozinho | `sqlite_store` | `_transacao()` com `BEGIN IMMEDIATE` / `COMMIT` / `ROLLBACK` |
+| Precatório sem autor quando o credor vinha como `Sucessora` (polo `OUTRO`) | `parser_base`, `projecao` | `projecao._polo`: em capa com `Ent. Devedora`, sucessor(a) vai para `autores`; a base de 2025 foi recoletada com `--recoletar` |
 
 ## Histórico de Modificações
 
@@ -61,3 +64,5 @@ Um item chega aqui quando o código muda e a página de origem passa a registrar
 |------|---------|------------|
 | 2026-09-04 | @alexandrehiero | Criação: os 37 itens encerrados saíram de `backlog.md` para esta página; o nome do script de conferência offline foi acertado para `checar_offline.py`, que é o arquivo existente |
 | 2026-09-21 | @alexandrehiero | 4 itens do layout novo do e-SAJ: movimentações, moeda do valor, ordem das movimentações e cadência do menu |
+| 2026-10-29 | @alexandrehiero | 2 itens do `sqlite_store`: origem dos órfãos na recoleta e transações que não existiam |
+| 2026-10-29 | @alexandrehiero | Sucessora do credor no precatório |

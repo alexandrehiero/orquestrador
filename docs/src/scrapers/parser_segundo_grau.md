@@ -3,7 +3,7 @@
 | Metadado            | Valor                                      |
 |---------------------|--------------------------------------------|
 | Data de criação     | 2026-08-10                                 |
-| Data de atualização | 2026-09-04                                 |
+| Data de atualização | 2026-10-26                                 |
 | Responsável(is)     | @alexandrehiero                            |
 | Dependências principais | `re`; herda de `src/scrapers/parser_base.py` |
 
@@ -14,6 +14,8 @@ A capa de `cposg` não é variação cosmética da de `cpopg`. Ela tem uma seç�
 **Um recurso e um incidente são vínculos de naturezas diferentes, e a mesma capa pode exibir os dois.** Se fossem gravados no mesmo campo, o grafo passaria a misturar "este processo subiu de instância" com "este processo nasceu de outro". O parser não decide qual vale — mantém os dois separados, e a decisão fica com [`vinculo`](../transformers/vinculo.md), único escritor do tipo de relacionamento.
 
 A advertência do próprio código: *"os seletores de cposg variam mais que os de cpopg. Confirmar num agravo real antes da coleta em massa."*
+
+A capa do Colégio Recursal (`cposgcr`, origem `9xxx`) tem o mesmo layout e passa por este parser sem nenhum ramo próprio: o relator, a seção "Números de 1ª Instância" (que aponta o processo do Juizado) e as partes saem dos mesmos seletores. Quem escolhe a instância é o [`numero_processo`](numero_processo.md).
 
 ## Decisões de Arquitetura
 
@@ -49,7 +51,7 @@ A advertência do próprio código: *"os seletores de cposg variam mais que os d
 
 - **Só o primeiro número de 1ª instância é capturado.** A varredura devolve na primeira célula com número e `_cnj_de_texto` usa `search()`. A seção chama-se "Números", no plural — um recurso com mais de um processo de origem registra só um vínculo, e os demais se perdem sem observação.
 - **O texto original da célula é descartado quando o CNJ é extraído.** Foro, vara e juiz de origem, que estão na mesma célula, ficam fora do dict — assimetria frente à filosofia de [`parser_base`](parser_base.md) de guardar o bruto e projetar depois.
-- **O fallback `_PADRAO_SECAO_1A` nunca foi exercitado.** O risco foi **reduzido em 2026-08-11**: `scripts/checar_offline.py` mostra `juiz` e `processo_1a_instancia` preenchidos nas **duas** capas reais de 2º grau de `data/spike/`, o que confirma `#relatorProcesso` e `#numeroProcessoPrimeiraInstancia`. Mas a saída não distingue qual caminho produziu o número, então a varredura de seção pode nunca ter rodado. Se o atalho por `id` sair da página, o fallback assume sem nunca ter sido testado — e `completude` não cobre o campo, então `processo_1a_instancia: null` sistemático não dispara nada.
+- **O atalho por `#numeroProcessoPrimeiraInstancia` não existe mais no portal; a varredura de seção é o caminho único.** Conferido em 2026-10-26: nenhuma das 7 capas reais de 2º grau (2 do TJ em `data/spike/`, 5 do `cposgcr`) tem o `id`. A varredura por `_PADRAO_SECAO_1A` achou o número nas 6 que o têm e devolveu `None` na que diz "Não há números de 1ª instância para este processo." O risco antigo ("fallback nunca exercitado") se inverteu: se o título da seção mudar, não há segundo caminho — e `completude` não cobre o campo, então `processo_1a_instancia: null` sistemático não dispara nada. `#relatorProcesso` continua presente.
 
 ## Exemplo de Uso
 
@@ -72,7 +74,7 @@ bruto["processo_principal"]        # None  <- se houvesse, seria INCIDENTE, camp
 
 ## Testes e Validação
 
-Não há suíte automatizada, e este é o módulo em que a ausência mais pesa: o próprio código declara que os seletores variam mais que os de `cpopg`. A validação prevista é `scripts/spike_seletores.py`, que consulta **sempre os dois graus** para cada número, salva o HTML em `data/spike/<numero>_g2.html` e imprime `processo_1a_instancia` ao lado do bruto. Rodá-lo sobre um agravo de instrumento real é o passo que a docstring pede antes da coleta em massa. As 5 invariantes estão no [backlog de testes](../../backlog_testes.md).
+Não há suíte automatizada, e este é o módulo em que a ausência mais pesa: o próprio código declara que os seletores variam mais que os de `cpopg`. A validação prevista é `scripts/spike_seletores.py`, que consulta **sempre os dois graus** para cada número, salva o HTML em `data/spike/<numero>_g2.html` e imprime `processo_1a_instancia` ao lado do bruto. Rodá-lo sobre um agravo de instrumento real é o passo que a docstring pede antes da coleta em massa. Para um número `9xxx`, o "grau 2" do spike já é o `cposgcr`. As 5 invariantes estão no [backlog de testes](../../backlog_testes.md).
 
 ## Histórico de Modificações
 
@@ -82,3 +84,4 @@ Não há suíte automatizada, e este é o módulo em que a ausência mais pesa: 
 | 2026-08-10 | @alexandrehiero | `_varrer_secao_1a_instancia` aceita qualquer número (`\d{4,}`) em vez de exigir CNJ válido, tornando `processo_1a_instancia_bruto` alcançável |
 | 2026-08-10 | @alexandrehiero | Docstring alinhada ao corpo; atalho por `#numeroProcessoPrimeiraInstancia` passa a usar o mesmo critério `\d{4,}` |
 | 2026-09-04 | @alexandrehiero | Reescrita enxuta (≤150 linhas): narrativa das 10 decisões virou lista de tópicos; código copiado removido. A limitação "seletores nunca confirmados" foi atualizada para o estado de 2026-08-11, em que `checar_offline.py` os observou preenchidos nas duas capas reais |
+| 2026-10-26 | @alexandrehiero | Capa do Colégio Recursal (`cposgcr`) atendida por este parser; limitação reescrita: o `id` de 1ª instância saiu do portal e a varredura de seção é o caminho único |

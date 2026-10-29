@@ -3,7 +3,7 @@
 | Metadado            | Valor                                      |
 |---------------------|--------------------------------------------|
 | Data de criação     | 2026-09-04                                 |
-| Data de atualização | 2026-10-09                                 |
+| Data de atualização | 2026-10-29                                 |
 | Responsável(is)     | @alexandrehiero                            |
 | Origem              | seção "Testes e Validação" dos 14 ADRs de `src/` |
 
@@ -57,9 +57,10 @@ Por relação risco/custo, conforme as próprias páginas de origem:
 | `exceptions` | Com `limite` alto e uma falha, `_levantar_falha` levanta `EsajRequisicaoError`, não `EsajIndisponivelError` |
 | `numero_processo` | Número com máscara, sem máscara e com ponto no lugar do hífen produzem o mesmo `digitos` |
 | `numero_processo` | `dv_esperado` reproduz o DV de um número real conhecido |
-| `numero_processo` | `origem == "0000"` ⇒ `graus_a_tentar == (2,)`; caso contrário `(1, 2)` |
+| `numero_processo` | `origem == "0000"` ou iniciada por `"9"` ⇒ `graus_a_tentar == (2,)`; caso contrário `(1, 2)` |
 | `numero_processo` | `params_busca(1)` e `params_busca(2)` devolvem conjuntos de chaves diferentes |
 | `numero_processo` | `origem == "0500"` ⇒ `params_busca(1)` leva `consultaDeRequisitorios=true`; `params_busca(2)` e as demais origens, não |
+| `numero_processo` | Origem `9xxx` ⇒ `instancia(2) == "cposgcr"` e `instancia(1) == "cpopg"`; as demais origens ⇒ `instancia(g) == instancia_do_grau(g)` |
 | `page_state` | Capa com tabela de partes **não** é `LISTA_SELECAO` (guarda de `_e_selecao`) |
 | `page_state` | Página com o formulário "Identificar-se" **não** é `SENHA_SEGREDO` |
 | `page_state` | HTML vazio ou irreconhecível devolve `DESCONHECIDO`, nunca `DADOS_CAPA` nem `NAO_ENCONTRADO` |
@@ -104,6 +105,12 @@ Por relação risco/custo, conforme as próprias páginas de origem:
 | `sqlite_store` | A reprojeção altera as três colunas de vínculo, `atualizado_em` e `bruto["observacoes"]` — e nada mais do `bruto` |
 | `sqlite_store` | Com `versao_regra_vinculo` já gravado e `forcar=False`, a reprojeção devolve `{"pulado": True}` sem ler nenhuma linha |
 | `sqlite_store` | Interromper a reprojeção e rodar de novo termina o serviço com o mesmo resultado |
+| `sqlite_store` | Exceção dentro de `_transacao()` desfaz **todos** os comandos dela |
+| `sqlite_store` | `(N, 0, erro, origem=orfao)` seguido de `registrar_resultado(N, 2, ..., origem=lista)` grava `origem = orfao` |
+| `sqlite_store` | `reabrir` só altera linha de grau 0: um número coletado continua coletado |
+| `sqlite_store` | `registrar_atualizacao` de `(N, 1, coletado)` com resultado no grau 2 deixa **uma** linha para `N` |
+| `sqlite_store` | `registrar_atualizacao` com resultado menos informativo devolve `mantido` e não altera `registro` |
+| `sqlite_store` | `registrar_falha_atualizacao` não altera `registro`; devolve `desistido` só na tentativa do teto |
 | `limpeza` | Toda função devolve `None` — nunca `''` — para entrada vazia ou não convertível |
 | `limpeza` | `limpar_classe` resolve parênteses aninhados e múltiplos numa passada |
 | `limpeza` | `dedup_nomes` preserva a grafia da **primeira** aparição e mantém a ordem |
@@ -128,6 +135,7 @@ Por relação risco/custo, conforme as próprias páginas de origem:
 | `projecao` | `inverter_filhos` de `(N,2) → (N,1)` mapeia `(N,1)` para `{(N,2)}` |
 | `projecao` | Observações repetidas nas duas origens aparecem uma vez só, na ordem de primeira aparição |
 | `projecao` | Partes todas em `OUTRO` produzem autores e réus vazios **com** a observação correspondente |
+| `projecao` | `Sucessora` com `Ent. Devedora` na capa sai em `autores`; `Sucessor` sem ela fica fora dos dois polos |
 | `exportador` | Linhas do arquivo == `resumo["total"]` == soma de `por_status` |
 | `exportador` | **Nenhuma linha tem `status: "erro_transitorio"`** — a garantia de `STATUS_EXPORTAVEIS` |
 | `exportador` | Cada linha é JSON válido isoladamente e todas têm o mesmo conjunto de chaves |
@@ -139,6 +147,7 @@ Por relação risco/custo, conforme as próprias páginas de origem:
 | `exportador` | **Toda linha de `orfaos.txt` sobrevive a `ler_numeros`** — nenhuma tem 21 dígitos |
 | `exportador` | `orfaos_diagnostico.txt` tem uma linha de dados por linha de `orfaos.txt`, na mesma ordem |
 | `exportador` | Pai citado no grau 1 que existe no grau 2 não entra em `orfaos.txt`, mas conta em `pares_pai_sem_documento` |
+| `consolidacao` | Com `preferir_coleta`, `coletado` da coleta vence `coletado` da base; `erro_persistente` da coleta continua perdendo |
 
 ## Histórico de Modificações
 
@@ -147,3 +156,6 @@ Por relação risco/custo, conforme as próprias páginas de origem:
 | 2026-09-04 | @alexandrehiero | Criação: consolidação das 89 invariantes antes dispersas na seção "Testes e Validação" dos 14 ADRs de `src/` |
 | 2026-09-21 | @alexandrehiero | Layout novo do e-SAJ e moeda: 4 invariantes novas (`coletor` ×2, `esaj_client`, `limpeza`); a de `dedup_movimentacoes` reescrita — total 96 |
 | 2026-10-09 | @alexandrehiero | Consulta de Requisitórios (origem `0500`): 1 invariante nova em `numero_processo`; a de polo ganhou `Ent. Devedora` — total 97 |
+| 2026-10-26 | @alexandrehiero | Colégio Recursal (origem `9xxx`): 1 invariante nova em `numero_processo` (`instancia`); a de `graus_a_tentar` estendida — total 98 |
+| 2026-10-29 | @alexandrehiero | Opções 5 e 6 do menu: 6 invariantes novas em `sqlite_store` (transação, origem, `reabrir`, atualização) — total 104 |
+| 2026-10-29 | @alexandrehiero | Sucessora no requisitório e recoleta pedida: 1 invariante em `projecao` e 1 em `consolidacao` — total 106 |

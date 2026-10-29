@@ -3,7 +3,7 @@
 | Metadado            | Valor                                      |
 |---------------------|--------------------------------------------|
 | Data de criação     | 2026-08-10                                 |
-| Data de atualização | 2026-10-09                                 |
+| Data de atualização | 2026-10-26                                 |
 | Responsável(is)     | @alexandrehiero                            |
 | Dependências principais | `collections.namedtuple`, `re` — sem dependências externas |
 
@@ -13,7 +13,7 @@ O [`EsajClient`](esaj_client.md) traz HTML, o [`page_state`](page_state.md) diz 
 
 A regra que governa o módulo: **só um `NAO_ENCONTRADO` explícito autoriza avançar de grau.**
 
-Vale seguir o cenário que a justifica, porque ele explica a arquitetura do projeto inteiro. Um processo com origem diferente de `0000` tem `graus_a_tentar == (1, 2)`. A consulta ao 1º grau cai — o Wi-Fi oscilou. Um coletor ingênuo interpreta "não consegui" como "não achei" e tenta o 2º grau. E o 2º grau **responde**: processos sobem de instância, então existe mesmo um registro daquele número em `cposg`. O processo é gravado com `grau = 2`.
+Vale seguir o cenário que a justifica, porque ele explica a arquitetura do projeto inteiro. Um processo com origem diferente de `0000` e de `9xxx` tem `graus_a_tentar == (1, 2)`. A consulta ao 1º grau cai — o Wi-Fi oscilou. Um coletor ingênuo interpreta "não consegui" como "não achei" e tenta o 2º grau. E o 2º grau **responde**: processos sobem de instância, então existe mesmo um registro daquele número em `cposg`. O processo é gravado com `grau = 2`.
 
 O resultado é um registro perfeitamente formado, com dados verdadeiros, sob o grau errado. Como a chave do banco é `(processo, grau)` e o relacionamento é construído sobre ela, o recurso passa a ocupar no grafo o lugar do processo originário. Nada detecta: a base fica internamente consistente e factualmente errada. Daí a regra — **"não consegui perguntar" nunca pode ser confundido com "perguntei e não existe"**.
 
@@ -34,6 +34,7 @@ O resultado é um registro perfeitamente formado, com dados verdadeiros, sob o g
 - **`_exibir_movimentacoes` clica em "Exibir" e em "Mais" até não haver cursor** — desde set/2026 a capa traz só um botão e o código interno do processo num script; as movimentações chegam por AJAX, 5 por vez (ver [`esaj_client`](esaj_client.md)). O critério de parada é a **ausência de cursor**, não o sumiço do botão: na última página o link vira "Recolher" e passa a só esconder e mostrar, então clicar até ele sumir nunca terminaria. As páginas são inseridas no contêiner da capa, como faz o JavaScript do portal, e o [parser](parser_base.md) lê tudo de uma vez. Capa sem o código (layout antigo) segue intacta.
 - **Movimentações completas ou nenhuma** — recusa do e-SAJ em qualquer página, 1ª página sem tabela, cursor repetido ou mais de `LIMITE_PAGINAS_MOVIMENTACOES` (1000) levantam `EsajError`, e o processo **inteiro** volta como `erro_transitorio`. Uma lista parcial é indistinguível de uma completa depois de virar JSONL, e as páginas perdidas seriam justamente as mais antigas — onde está a movimentação de origem que o [`vinculo`](../transformers/vinculo.md) usa para achar o pai.
 - **Processo do DEPRE (origem `0500`) é coletado no grau 1, pela Consulta de Requisitórios** — o coletor não tem ramo próprio para isso: a via vem do número (ver [`numero_processo`](numero_processo.md)) e chega pronta em `client.buscar` e em `client.abrir_detalhe`, que recebe o `np`. A máquina de estados, o parser e a chave `(processo, 1)` são os mesmos de qualquer capa de `cpopg`.
+- **Processo do Colégio Recursal (origem `9xxx`) é coletado no grau 2, no `cposgcr`** — também sem ramo próprio: o número diz `graus_a_tentar == (2,)` e a instância (ver [`numero_processo`](numero_processo.md)), e `_exibir_movimentacoes` passa o `np` adiante para o "Exibir" e os "Mais" saírem no mesmo `cposgcr` que abriu a capa. O parser é o de 2º grau e a chave, `(processo, 2)`.
 - **O vocabulário de status vem de fora** — o candidato natural seria o `sqlite_store`, que valida e grava os status; mas esta é uma função que **não conhece o banco**, e importar de `store/` inverteria a dependência sem ganho. Ver [`status`](../status.md).
 
 ### A máquina de estados
@@ -116,7 +117,7 @@ else:
 
 ## Testes e Validação
 
-Não há suíte automatizada. `scripts/spike_seletores.py` exercita as mesmas peças e importa daqui o `PARSER_POR_GRAU`, mas **não** chama `coletar_um` — consulta sempre os dois graus, o oposto da lógica de roteamento deste módulo. É o módulo com a melhor relação risco/facilidade de teste: `coletar_um` aceita um `client` dublê que devolve HTMLs de `data/spike/`, sem rede. Foi assim que a paginação foi conferida em 2026-09-21: com um dublê, 3 páginas saíram na ordem e sem a linha do cursor, e recusa na 1ª e na 3ª página, resposta irreconhecível e cursor repetido viraram `erro_transitorio`. Ao vivo, as contagens bateram com a paginação manual: 54, 35, 52 e 605. Em 2026-10-09 a via de requisitórios foi conferida ao vivo: `0023593-13.2023.8.26.0500` saiu `coletado` no grau 1, com 20 movimentações; uma seleção que abre página de senha, `segredo_justica`; um número `0500` inexistente, `sem_dados`. As 11 invariantes estão no [backlog de testes](../../backlog_testes.md).
+Não há suíte automatizada. `scripts/spike_seletores.py` exercita as mesmas peças e importa daqui o `PARSER_POR_GRAU`, mas **não** chama `coletar_um` — consulta sempre os dois graus, o oposto da lógica de roteamento deste módulo. É o módulo com a melhor relação risco/facilidade de teste: `coletar_um` aceita um `client` dublê que devolve HTMLs de `data/spike/`, sem rede. Foi assim que a paginação foi conferida em 2026-09-21: com um dublê, 3 páginas saíram na ordem e sem a linha do cursor, e recusa na 1ª e na 3ª página, resposta irreconhecível e cursor repetido viraram `erro_transitorio`. Ao vivo, as contagens bateram com a paginação manual: 54, 35, 52 e 605. Em 2026-10-09 a via de requisitórios foi conferida ao vivo: `0023593-13.2023.8.26.0500` saiu `coletado` no grau 1, com 20 movimentações; uma seleção que abre página de senha, `segredo_justica`; um número `0500` inexistente, `sem_dados`. Em 2026-10-26 o Colégio Recursal foi conferido ao vivo: 5 processos `9xxx` (`9000`, `9006`, `9007`, `9013`, `9061`) saíram `coletado` no grau 2, com 27 a 52 movimentações, inclusive o `9000`, que passa pela tela de seleção e abre pelo código; um `9xxx` inexistente, `sem_dados` com uma requisição. Na mesma execução, `0396`, `0000` e `0500` repetiram as contagens anteriores (54, 35 e 20). As 11 invariantes estão no [backlog de testes](../../backlog_testes.md).
 
 ## Histórico de Modificações
 
@@ -128,3 +129,4 @@ Não há suíte automatizada. `scripts/spike_seletores.py` exercita as mesmas pe
 | 2026-09-04 | @alexandrehiero | Reescrita enxuta (≤150 linhas): narrativa das 12 decisões virou lista de tópicos; código copiado removido; invariantes migradas para o backlog de testes |
 | 2026-09-21 | @alexandrehiero | Layout novo do e-SAJ: `_exibir_movimentacoes` clica em "Exibir" e "Mais" até o fim; qualquer falha devolve o processo inteiro como `erro_transitorio` |
 | 2026-10-09 | @alexandrehiero | Origem `0500` (DEPRE) pela Consulta de Requisitórios: `abrir_detalhe` recebe o `np`; máquina de estados inalterada |
+| 2026-10-26 | @alexandrehiero | Origem `9xxx` (Colégio Recursal) no `cposgcr`: `_exibir_movimentacoes` e `carregar_movimentacoes` recebem o `np`; máquina de estados inalterada |

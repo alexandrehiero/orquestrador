@@ -3,7 +3,7 @@
 | Metadado            | Valor                                      |
 |---------------------|--------------------------------------------|
 | Data de criação     | 2026-08-10                                 |
-| Data de atualização | 2026-10-09                                 |
+| Data de atualização | 2026-10-26                                 |
 | Responsável(is)     | @alexandrehiero                            |
 | Dependências principais | `re` — só `src/scrapers/exceptions.py` do projeto |
 
@@ -13,7 +13,7 @@ O número de processo é o identificador em torno do qual gira o pipeline inteir
 
 Este módulo transforma o número num **value object**: imutável na prática, que nasce validado e sabe responder tudo que o pipeline pergunta. A estrutura vem da Resolução CNJ 65/2008: `NNNNNNN-DD.AAAA.J.TR.OOOO`, 20 dígitos.
 
-Há uma segunda motivação. O e-SAJ organiza a consulta por **instância** (`cpopg`, `cposg`), mas o domínio fala em **grau**. Todo o resto do projeto passa `grau=1` ou `grau=2`; a tradução acontece num lugar só.
+Há uma segunda motivação. O e-SAJ organiza a consulta por **instância** (`cpopg`, `cposg`, `cposgcr`), mas o domínio fala em **grau**. Todo o resto do projeto passa `grau=1` ou `grau=2`; a tradução acontece num lugar só.
 
 ## Decisões de Arquitetura
 
@@ -26,6 +26,7 @@ Há uma segunda motivação. O e-SAJ organiza a consulta por **instância** (`cp
 - **`params_busca(grau)` concentra a query string do `search.do`** — e o método existe por um detalhe concreto: **os dois graus usam nomes de parâmetro diferentes para a mesma coisa** (`dadosConsulta.valorConsultaNuUnificado` no 1º, `dePesquisaNuUnificado` no 2º). Espalhar isso pelo cliente HTTP significaria dois blocos de `if instancia == "cpopg"` em lugares distintos. É o único ponto a ajustar se o e-SAJ mudar.
 - **O roteamento de grau é derivado da própria estrutura do número** — origem `0000` indica processo autuado originariamente no 2º grau (Res. 65/2008, art. 1º §1º-A): agravo de instrumento, ação rescisória. `graus_a_tentar` devolve `(2,)` nesses casos e `(1, 2)` nos demais. Uma requisição economizada por agravo, sem heurística: é o que a Resolução define.
 - **A via de consulta também é derivada do número** — origem `0500` é o DEPRE (precatórios), e esses processos respondem "Usuário sem acesso ao processo." na consulta comum do 1º grau: só abrem pela Consulta de Requisitórios, que é o **mesmo** `cpopg/search.do` com `consultaDeRequisitorios=true`. `requisitorio` diz se o número é desse foro e `params_via(grau)` devolve o parâmetro, que `params_busca` embute na busca e o [`esaj_client`](esaj_client.md) repete ao abrir o detalhe pelo código. `graus_a_tentar` não muda: o 2º grau só é consultado se a via de requisitórios disser `NAO_ENCONTRADO`.
+- **A instância também é derivada do número** — origem `9xxx` é um Colégio Recursal, o 2º grau dos Juizados Especiais. No `cpopg` e no `cposg` esses processos respondem "Não existem informações disponíveis" e viravam `sem_dados` em silêncio; só abrem na consulta do Colégio Recursal (`cposgcr`), que tem o **mesmo** formulário e a **mesma** capa do `cposg`. `colegio_recursal` diz se o número é de lá, `graus_a_tentar` devolve `(2,)` — como a origem `0000`, é processo autuado na instância recursal — e `instancia(grau)` devolve `cposgcr` no 2º grau. Busca, detalhe e movimentações pedem a instância ao número, não a `instancia_do_grau`. O grau gravado é 2: parser, banco, vínculo e JSONL são os de qualquer capa de 2º grau. O teste é por prefixo, não por lista: a tabela de foros de 2008 vai até `9059`, e `9061` já existe — e abre no `cposgcr` (conferido ao vivo em 2026-10-29: na base de 2025 são 7.484 dos 7.500 `9xxx`).
 - **`do_tjsp` valida o alvo antes de gastar requisição** — segmento `8` (Justiça Estadual) e tribunal `26` (São Paulo). Com a cadência de uma requisição a cada 1,1–1,6 s, descartar na leitura do arquivo é qualitativamente diferente de descobrir na rede.
 - **`__eq__` e `__hash__` operam sobre os dígitos** — dois números construídos a partir de grafias diferentes (com máscara, sem, com ponto no lugar do hífen) são iguais e colidem no mesmo `hash`, porque `so_digitos` normaliza tudo na construção.
 
@@ -41,6 +42,8 @@ Há uma segunda motivação. O e-SAJ organiza a consulta por **instância** (`cp
 | Tentar sempre os dois graus, na ordem 1 → 2 | Desperdiçaria uma requisição em todo processo originário do 2º grau, que por definição nunca existiu em 1ª instância. |
 | Consultar o 1º grau comum e, no "sem acesso", repetir com o parâmetro de requisitórios | Duas requisições por processo num foro com cerca de 221 mil números, e a página "sem acesso" teria de virar um estado reconhecido só para servir de gatilho. A origem `0500` já diz a via antes da primeira requisição. |
 | Mandar `consultaDeRequisitorios=true` em toda busca do 1º grau | Testado em 2026-10-09: num processo comum o e-SAJ responde "Não existem informações disponíveis" — todo o 1º grau viraria `NAO_ENCONTRADO`. |
+| Gravar o Colégio Recursal num grau próprio (`3`) | Banco, `projecao`, `estrutura_gpdr` e `vinculo` só conhecem 1 e 2, e a capa é a do `cposg`. A origem `9xxx` no próprio número já distingue o Colégio Recursal do TJ, sem coluna nova. |
+| Tentar o `cposg` e, no "não existe", o `cposgcr` | Uma requisição perdida por processo, e o `NAO_ENCONTRADO` do `cposg` deixaria de ser prova de ausência no 2º grau. A origem já diz a instância antes da primeira requisição. |
 | `NumeroProcesso` mutável, sem `__slots__` | Permitiria anexar estado por fora (`np.grau`, `np.status`) e criar duas fontes de verdade para a mesma informação. |
 
 ## Limitações Conhecidas
@@ -48,6 +51,7 @@ Há uma segunda motivação. O e-SAJ organiza a consulta por **instância** (`cp
 - **`dv_valido` não é consultado na construção.** É possível ter um `NumeroProcesso` com 20 dígitos e DV incorreto circulando — decisão, não descuido, mas exige que cada ponto de entrada lembre de checar. `ler_numeros` checa, e a lista de órfãos passa pelo mesmo `ler_numeros`.
 - **`do_tjsp` cobre apenas segmento e tribunal.** Um número de São Paulo com origem inexistente passa na validação e só será descoberto quando o e-SAJ responder `NAO_ENCONTRADO`.
 - **Só a origem `0500` é roteada para a Consulta de Requisitórios.** Outra origem que responda "sem acesso" na consulta comum continua em `DESCONHECIDO` e vira `erro_transitorio`; nenhuma foi observada.
+- **Só a origem `9xxx` é roteada para o `cposgcr`.** O recurso inominado mantém o número do Juizado (ex.: `1018616-22.2015.8.26.0053`, conferido em 2026-10-26) e só existe no `cposgcr`. Pela origem, ele é buscado no `cpopg`, onde o processo do Juizado responde, e a coleta para no grau 1 — como já acontece com a apelação no TJ. Um incidente do Colégio Recursal (o Pedido de Uniformização, por exemplo) que o cite como pai fica com a referência `(número, 2)`: o casamento de órfãos por número a dá como resolvida assim que o processo do Juizado é coletado no grau 1, mas o nó citado não está na base — a limitação assumida de `orfaos` no [`sqlite_store`](../store/sqlite_store.md).
 - **`__eq__` e `__hash__` não são exercitados por nenhum caminho atual.** A desduplicação em `ler_numeros` é feita sobre `np.digitos` (strings), não sobre instâncias. Existem para quando alguém quiser usar o objeto como chave.
 - **Números anteriores ao padrão CNJ não são representáveis.** Um `'26747/2005'` é rejeitado no construtor. O projeto lida com isso fora daqui: o [`parser_segundo_grau`](parser_segundo_grau.md) guarda a string original e o [`vinculo`](../transformers/vinculo.md) a transforma em observação.
 - **`so_digitos` é reimplementado em outros cinco lugares.** Ver [backlog §1](../../backlog.md).
@@ -65,6 +69,8 @@ np.graus_a_tentar             # (1, 2)
 
 NumeroProcesso("3000004-25.2019.8.26.0000").graus_a_tentar   # (2,)  <- origem '0000'
 NumeroProcesso("0023593-13.2023.8.26.0500").params_via(1)    # {'consultaDeRequisitorios': 'true'}  <- origem '0500'
+NumeroProcesso("3000001-89.2022.8.26.9013").graus_a_tentar   # (2,)  <- origem '9xxx'
+NumeroProcesso("3000001-89.2022.8.26.9013").instancia(2)     # 'cposgcr'
 NumeroProcesso.tentar("lixo")                                 # None <- não levanta
 instancia_do_grau(1)                                          # 'cpopg'
 ```
@@ -73,9 +79,9 @@ instancia_do_grau(1)                                          # 'cpopg'
 
 ## Testes e Validação
 
-Não há suíte automatizada. A validação em uso é a inspeção manual via `scripts/spike_seletores.py`, que reporta `digitos`, `origem`, `dv_valido`, `graus_a_tentar` e `requisitorio` antes de qualquer requisição, mais o `numeros_invalidos.txt` gerado pela opção 1, que registra número e motivo da rejeição linha a linha.
+Não há suíte automatizada. A validação em uso é a inspeção manual via `scripts/spike_seletores.py`, que reporta `digitos`, `origem`, `dv_valido`, `graus_a_tentar`, `requisitorio` e `colegio_recursal` antes de qualquer requisição, e a instância consultada em cada grau, mais o `numeros_invalidos.txt` gerado pela opção 1, que registra número e motivo da rejeição linha a linha.
 
-**Este é o módulo mais barato de cobrir do projeto inteiro:** é puro, não faz I/O e todas as respostas são deriváveis de um número conhecido. As 5 invariantes estão no [backlog de testes](../../backlog_testes.md).
+**Este é o módulo mais barato de cobrir do projeto inteiro:** é puro, não faz I/O e todas as respostas são deriváveis de um número conhecido. As 6 invariantes estão no [backlog de testes](../../backlog_testes.md).
 
 ## Histórico de Modificações
 
@@ -85,3 +91,4 @@ Não há suíte automatizada. A validação em uso é a inspeção manual via `s
 | 2026-09-04 | @alexandrehiero | Reescrita enxuta (≤150 linhas): código copiado removido; invariantes migradas para o backlog de testes |
 | 2026-09-21 | @alexandrehiero | Cadência citada atualizada para 1,1–1,6 s |
 | 2026-10-09 | @alexandrehiero | Origem `0500` (DEPRE): `requisitorio` e `params_via`; `params_busca(1)` leva `consultaDeRequisitorios=true` |
+| 2026-10-26 | @alexandrehiero | Origem `9xxx` (Colégio Recursal): `colegio_recursal` e `instancia(grau)`; `graus_a_tentar == (2,)` e o 2º grau vai ao `cposgcr` |

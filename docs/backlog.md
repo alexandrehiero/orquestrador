@@ -3,9 +3,9 @@
 | Metadado            | Valor                                      |
 |---------------------|--------------------------------------------|
 | Data de criação     | 2026-08-10                                 |
-| Data de atualização | 2026-10-09                                 |
+| Data de atualização | 2026-10-26                                 |
 | Responsável(is)     | @alexandrehiero                            |
-| Cobertura atual     | todo o `src/` (13 módulos) e `scripts/`    |
+| Cobertura atual     | todo o `src/` (19 módulos), `scripts/` e `scripts_final/` |
 
 Dívidas estruturais, riscos não confirmados e verificações ausentes levantados pelos ADRs. Cada item nasce de uma página, que guarda o contexto completo; aqui fica o enunciado, a evidência no código e o efeito hoje.
 
@@ -54,7 +54,7 @@ Cinco utilitários com mais de uma implementação. Nenhum diverge hoje — toda
 
 | Item | Onde | Efeito hoje | Risco |
 |---|---|---|---|
-| Fallback `_PADRAO_SECAO_1A` do `cposg` sem confirmação | `parser_segundo_grau.py` | **Reduzido em 2026-08-11.** `scripts/checar_offline.py` mostra `juiz` e `processo_1a_instancia` preenchidos nas duas capas reais de 2º grau de `data/spike/` — `#relatorProcesso` e `#numeroProcessoPrimeiraInstancia` funcionam. A saída não distingue qual caminho produziu o número | Se o atalho por `id` sair da página, o fallback assume sem nunca ter sido exercitado. `completude` não cobre o campo, então `processo_1a_instancia: null` sistemático não dispara nada |
+| Varredura `_PADRAO_SECAO_1A` é o único caminho até o número de 1ª instância | `parser_segundo_grau.py` | **Reescrito em 2026-10-26.** Nenhuma das 7 capas reais de 2º grau conferidas (2 do TJ, 5 do `cposgcr`) tem `#numeroProcessoPrimeiraInstancia`; a varredura achou o número nas 6 que o têm | Se o título da seção mudar, não há segundo caminho. `completude` não cobre o campo, então `processo_1a_instancia: null` sistemático não dispara nada |
 | Só o primeiro número de 1ª instância é capturado | `_varrer_secao_1a_instancia` devolve na primeira célula com número; `_cnj_de_texto` usa `search()` | Um recurso com mais de um processo de origem registra só um vínculo | A seção chama-se "Números", no plural — os demais são perdidos sem observação |
 | Texto original da célula descartado quando o CNJ é extraído | `parser_segundo_grau.py:44` | Foro, vara e juiz de origem, que estão na mesma célula, ficam fora do dict | Assimetria frente à filosofia declarada em `parser_base` (guardar o bruto, projetar depois) |
 | `_FRASES_NAO_ENCONTRADO` é lista fechada de três frases | `page_state.py:64` | Correto para as três redações conhecidas | Se o e-SAJ mudar o texto, todo processo inexistente vira `DESCONHECIDO` → `erro_transitorio` → `erro_persistente`. A base não fica errada; a fila de falhas cresce sem explicação óbvia |
@@ -86,14 +86,25 @@ Nenhum impede a operação hoje; todos são armadilhas para quem for estender ou
 | Item | Onde | Efeito hoje | Risco |
 |---|---|---|---|
 | Metade das funções depende de globais preenchidos por efeito colateral | `ENTRADA`, `SAIDA`, `JSONL`, `ORFAOS`, `FALHAS`, `REVISAO`, `INVALIDOS`, `BANCO` nascem `None` e são definidos por `configurar_projeto()` (`menu.py:55`) | Nenhum: `main()` sempre configura antes de qualquer opção | `atualizar_arquivos_de_falha`, `escrever_relatorio` e `_mostrar` recebem `store` por parâmetro mas leem caminhos de globais — não são reutilizáveis fora do fluxo do menu. A falha seria `AttributeError` em `None.name`, longe da causa |
-| A opção 2 reclassifica a origem dos órfãos como `lista` | `executar_coleta(..., ORIGEM_LISTA, "Recoletando")` (`menu.py:287`) | Um órfão que falhou na opção 3 e foi recoletado pela 2 entra numa linha nova com `origem = "lista"` | A coluna existe para separar "a base que pedi" da "base que descobri"; a distinção se perde na recoleta |
 | A opção 3 descarta os números inválidos sem registrar | `numeros, _ = ler_numeros(ORFAOS)` (`menu.py:318`) | A opção 1 grava os rejeitados em `numeros_invalidos.txt`; aqui o segundo retorno é ignorado | Como `vinculo._dv_ok` já filtra o DV, o caso restante é um pai **fora do TJSP**: sumiria da fila sem aparecer em lugar nenhum e voltaria a ser listado como órfão em toda opção 4 |
 | A docstring do `menu` descreve a opção 4 sem mencionar a reprojeção | Cabeçalho de `menu.py` diz só *"transforma os dados coletados na estrutura JSON final (local, sem rede)"* | A docstring de `opcao_4` já registra os três passos | Quem ler só o topo do arquivo não descobre que a opção 4 **escreve no banco** |
 | Duas docstrings do `spike` descrevem invocações diferentes | Cabeçalho de `spike_seletores.py` documenta `# lê data/entrada/processos.txt`; a de `main()` já descreve o nome de projeto | O padrão sem argumento é `processos`, que não existe no repositório (a entrada versionada é `teste1.txt`) | Benigno — a mensagem de arquivo não encontrado orienta —, mas o arquivo diz duas coisas sobre si mesmo |
 | O spike não clica em "Exibir movimentações" | `spike_seletores._relatar_capa` chama só `parse()` sobre a capa | No layout novo, o relatório `[parse]` mostra 0 movimentações | Quem usar o spike para validar seletores antes de uma coleta concluiria que as movimentações quebraram |
 | Nome de projeto com 20 dígitos vira número de processo | `numeros = [a for a in argumentos if len(re.sub(r"\D", "", a)) == 20]` (`spike_seletores.py:145`) | Nenhum com os nomes em uso | Um projeto como `coleta_20240101_20241231_v2` cairia na lista de números e seria consultado no e-SAJ |
+| `preparar_base_final` depende dos globais e de uma função privada do `menu` | `menu.configurar_projeto` antes de `executar_coleta`/`atualizar_arquivos_de_falha`; `menu._escrever_atomico`; desde 2026-10-29, `menu.rota_nova` e `menu.reabrir_rotas_novas` | Nenhum: o script sempre configura o projeto antes de coletar | Amplia o primeiro item desta seção: uma mudança de assinatura no `menu` quebra o script, e nada aponta a dependência fora desta linha |
 
-**Origem:** [`menu`](scripts/menu.md), [`spike_seletores`](scripts/spike_seletores.md).
+**Origem:** [`menu`](scripts/menu.md), [`spike_seletores`](scripts/spike_seletores.md), [`preparar_base_final`](scripts_final/preparar_base_final.md).
+
+### Base final na estrutura do GPDR
+
+| Item | Onde | Efeito hoje | Risco |
+|---|---|---|---|
+| `tiposParte` sempre vazio | `projecao._grupo` deixa `tipo_parte` só no bruto; `estrutura_gpdr` lê o JSONL | Nenhum documento da base final tem tipo de parte | Consultas do GPDR que filtram por `tiposParte` não acham nada nesta base |
+| Tabela de foros de 2008 | `data/unidades_foro_tjsp.md` (Resolução TJSP nº 65/2008) | Códigos posteriores (Núcleos 4.0, `9061`) saem com `foro.descricao: null`; listados no `.meta.json` | Cresce a cada unidade nova; a capa não serve de substituta |
+| Regras copiadas do GPDR | `monetario`, `nomes` e o bloco de `atos_pge` | Nenhum: zero diferenças contra a v7 em 2026-10-23 | Uma mudança de regra no GPDR não chega aqui; só uma nova conferência denuncia |
+| Valor sem símbolo assumido em Real | `limpeza.moeda_do_valor` devolve `R$` por padrão | Em 2025, sem efeito | Processo de 1994 sem símbolo seria tratado como Real; o GPDR só assumia Real a partir de 1995 |
+
+**Origem:** [`estrutura_gpdr`](src/transformers/estrutura_gpdr.md), [`monetario`](src/transformers/monetario.md), [`nomes`](src/transformers/nomes.md), [`atos_pge`](src/aggregators/atos_pge.md).
 
 ## 6. Ausência de testes
 
@@ -101,7 +112,7 @@ Não há suíte automatizada no repositório. O obstáculo não é técnico: `pa
 
 O que existe é `scripts/checar_offline.py`, que reprocessa esses HTMLs sem nenhuma requisição e imprime o resultado para leitura humana. **Não é teste:** sem asserção, sem runner, sem veredito passa/falha.
 
-As 97 invariantes que valeria fixar, com a ordem sugerida, estão em [backlog de testes](backlog_testes.md).
+As 106 invariantes que valeria fixar, com a ordem sugerida, estão em [backlog de testes](backlog_testes.md).
 
 ## Histórico de Modificações
 
@@ -114,3 +125,8 @@ As 97 invariantes que valeria fixar, com a ordem sugerida, estão em [backlog de
 | 2026-09-04 | @alexandrehiero | Divisão em três páginas: invariantes de teste e itens encerrados ganharam página própria; §6 virou ponteiro |
 | 2026-09-21 | @alexandrehiero | Layout novo do e-SAJ: 2 itens em §2, 2 em §4 e 1 em §5; contagem de invariantes corrigida para 96 |
 | 2026-10-09 | @alexandrehiero | Contagem de invariantes atualizada para 97 (Consulta de Requisitórios) |
+| 2026-10-23 | @alexandrehiero | Base final na estrutura do GPDR: 1 item em §5 e a subseção "Base final na estrutura do GPDR" (4 itens) |
+| 2026-10-26 | @alexandrehiero | Colégio Recursal (`cposgcr`): item da varredura de 1ª instância em §3 reescrito; contagem de invariantes atualizada para 98 |
+| 2026-10-29 | @alexandrehiero | Opções 5 e 6 do menu: item da origem dos órfãos em §5 encerrado; contagem de invariantes atualizada para 104 |
+| 2026-10-29 | @alexandrehiero | Rótulo `Sucessora` em §3 (precatórios sem autor); dependências novas do `preparar_base_final` em §5 |
+| 2026-10-29 | @alexandrehiero | Item do rótulo `Sucessora` encerrado (regra de contexto na projeção); contagem de invariantes atualizada para 106 |

@@ -3,7 +3,7 @@
 | Metadado            | Valor                                      |
 |---------------------|--------------------------------------------|
 | Data de criação     | 2026-08-10                                 |
-| Data de atualização | 2026-09-21                                 |
+| Data de atualização | 2026-10-29                                 |
 | Responsável(is)     | @alexandrehiero                            |
 | Dependências principais | `src.transformers.limpeza`, `src.status` — sem dependências externas |
 
@@ -25,6 +25,7 @@ O nome é literal no sentido de banco de dados: uma projeção é uma vista deri
 - **O `else` se denuncia na própria base** — antes, o ramo final tratava qualquer status não reconhecido como `erro_persistente`: o registro saía com uma frase plausível e uma afirmação falsa. A escolha do canal importa: não há log a consultar num export que roda uma vez e produz milhões de linhas, mas há a base final, que é onde alguém vai olhar. Falhar alto, no lugar em que o problema será visto. Mesma lógica do `DESCONHECIDO` em [`page_state`](../scrapers/page_state.md).
 - **Grau `0` volta a ser `null`** — o `0` é convenção interna do banco, necessária porque o SQLite aceita `NULL` em chave primária. Na base final não existe "grau zero" no Judiciário.
 - **Só dois polos na base final** — `_grupo` descarta quem não está no polo pedido; não há grupo para `OUTRO`. A supressão é decisão de projeto (o recorte da pesquisa são os polos) e interage com uma escolha do parser: `'interessado'` foi **removido** do passivo por ser rótulo neutro e passou a cair em `OUTRO`. O parser preserva a categoria; a projeção a suprime.
+- **`_polo`: a sucessora do credor é autora no requisitório** — o parser classifica o rótulo sozinho, e `Sucessora`/`Sucessor` fica em `OUTRO`, porque fora do precatório o sucedido pode ser o réu. Numa capa com `Ent. Devedora`, a entidade é a única parte passiva e a sucessora é quem recebe: vai para `autores`. A regra mora aqui, onde as partes são vistas juntas, e vale para o bruto já coletado na próxima opção 4, sem recoleta. Na base de 2025, 44 de 22.474 precatórios saíam só com a devedora.
 - **Uma observação quando a supressão esvazia o documento** — no caso extremo em que **todas** as partes caem em `OUTRO`, o documento sai com autores e réus vazios, idêntico a uma capa sem partes, embora `completude["tem_partes"]` fosse verdadeiro e `_capa_suspeita` tenha aprovado a página justamente por haver partes. O registro passa por toda a rede de segurança e chega à base final aparentando o oposto do que foi observado. A observação não desfaz a supressão: impede que o documento **minta por omissão** e dá uma população recortável para auditar o classificador de polo.
 - **`valor_acao_moeda` fica ao lado de `valor_acao`, e o número continua número** — o símbolo ganhou campo próprio em vez de voltar para dentro do valor, que perderia `$sum` no Mongo e as operações numéricas do pandas. A chave nasce no `esqueleto`, para todos os status terem o mesmo conjunto de campos, e só é preenchida quando há valor: sem `valor_acao`, a moeda também é `null`. A regra do símbolo mora em [`limpeza.moeda_do_valor`](limpeza.md).
 - **As movimentações saem na ordem do e-SAJ** — mais recente primeiro, inclusive dentro do mesmo dia; a projeção só remove repetições exatas (ver [`limpeza`](limpeza.md)).
@@ -85,7 +86,7 @@ O caso acima é real: está em `data/saida/teste1/base_final.jsonl`.
 
 ## Testes e Validação
 
-Não há suíte automatizada. O módulo é puro e não precisa de banco, e `scripts/checar_offline.py` **não** o alcança: para no parser e no vínculo. A invariante de maior valor — um `segredo_justica` com filhos preserva `processos_filhos` — é observável em dado real no JSONL do projeto `teste1`. As 8 invariantes estão no [backlog de testes](../../backlog_testes.md).
+Não há suíte automatizada. O módulo é puro e não precisa de banco, e `scripts/checar_offline.py` **não** o alcança: para no parser e no vínculo. A invariante de maior valor — um `segredo_justica` com filhos preserva `processos_filhos` — é observável em dado real no JSONL do projeto `teste1`. As 9 invariantes estão no [backlog de testes](../../backlog_testes.md).
 
 ## Histórico de Modificações
 
@@ -96,3 +97,4 @@ Não há suíte automatizada. O módulo é puro e não precisa de banco, e `scri
 | 2026-08-11 | @alexandrehiero | Limitação do `tipo` não reprojetável reescrita: `reprojetar_vinculos` roda antes do export |
 | 2026-09-04 | @alexandrehiero | Reescrita enxuta (≤150 linhas): narrativa das 9 decisões virou lista de tópicos; código copiado removido; invariantes migradas para o backlog de testes |
 | 2026-09-21 | @alexandrehiero | Campo `valor_acao_moeda`; movimentações na ordem do e-SAJ |
+| 2026-10-29 | @alexandrehiero | `_polo`: `Sucessora`/`Sucessor` vai para `autores` em capa com `Ent. Devedora` |

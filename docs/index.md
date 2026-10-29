@@ -18,7 +18,7 @@ Ela aparece na taxonomia de status, na decisão de avançar de grau, na conferê
 
 ## Como funciona
 
-Um menu interativo com quatro operações. O fluxo recomendado é **1 → 4 → 3 (opcional) → 4**.
+Um menu interativo com seis operações. O fluxo recomendado é **1 → 4 → 3 (opcional) → 4**.
 
 ```
 data/entrada/<projeto>.txt
@@ -45,8 +45,12 @@ data/entrada/<projeto>.txt
 | 2 | Recoleta apenas os que falharam por motivo transitório | Sim |
 | 3 | Coleta processos citados como pai que ainda não têm registro | Sim |
 | 4 | Reprojeta vínculos, exporta o JSONL e recalcula os órfãos | **Não** |
+| 5 | Recoleta os sem dado do Colégio Recursal (`9xxx`) e do DEPRE (`0500`) gravados antes dessas rotas | Sim |
+| 6 | Recoleta a base inteira; uma falha ou resposta pior mantém o registro anterior | Sim |
 
-O ciclo 4 → 3 → 4 fecha o grafo de relacionamento e **converge**: um processo que o e-SAJ afirma não existir sai da lista de órfãos para sempre. Detalhes de operação em [`menu`](scripts/menu.md).
+O ciclo 4 → 3 → 4 fecha o grafo de relacionamento e **converge**: um processo que o e-SAJ afirma não existir sai da lista de órfãos para sempre. Detalhes de operação em [`menu`](scripts/menu.md); para pôr um notebook que já coletava na versão nova, a [sequência de comandos](guias/atualizar_notebook.md).
+
+Terminada a coleta de um ano, o JSONL vai para `data_final/JSONL_final/` e [`preparar_base_final`](scripts_final/preparar_base_final.md) fecha o ciclo: confronta a base com a lista do ano, coleta pelo próprio orquestrador o que falta, remove duplicados e grava a base na estrutura do GPDR, com as movimentações do Atos da PGE.
 
 ![alt text](<Diagrama 1.png>) 
 ![alt text](<Diagrama 2.png>) 
@@ -88,15 +92,21 @@ Para entender o pipeline lendo código, comece por [`status`](src/status.md) e [
 | `scrapers` | [`page_state`](src/scrapers/page_state.md) | Que página é esta? E é do processo pedido? |
 | `scrapers` | [`parser_base`](src/scrapers/parser_base.md) | Extração da capa em dict **bruto** |
 | `scrapers` | [`parser_primeiro_grau`](src/scrapers/parser_primeiro_grau.md) | Especialização de `cpopg` (juiz) |
-| `scrapers` | [`parser_segundo_grau`](src/scrapers/parser_segundo_grau.md) | Especialização de `cposg` (relator, 1ª instância) |
+| `scrapers` | [`parser_segundo_grau`](src/scrapers/parser_segundo_grau.md) | Especialização de `cposg` e `cposgcr` (relator, 1ª instância) |
 | `scrapers` | [`coletor`](src/scrapers/coletor.md) | Máquina de estados de **um** processo |
 | `store` | [`sqlite_store`](src/store/sqlite_store.md) | Checkpoint, filas e consultas de grafo |
 | `transformers` | [`limpeza`](src/transformers/limpeza.md) | Texto bruto → dado utilizável (módulo puro) |
 | `transformers` | [`vinculo`](src/transformers/vinculo.md) | Derivação do relacionamento |
 | `transformers` | [`projecao`](src/transformers/projecao.md) | Registro do banco → documento final |
+| `transformers` | [`monetario`](src/transformers/monetario.md) | Moedas históricas e IPCA, a mesma regra do GPDR |
+| `transformers` | [`nomes`](src/transformers/nomes.md) | Formatação e unificação de nomes, como no GPDR |
+| `transformers` | [`estrutura_gpdr`](src/transformers/estrutura_gpdr.md) | Linha do JSONL → documento na estrutura do GPDR |
 | `aggregators` | [`exportador`](src/aggregators/exportador.md) | SQLite → JSONL, em streaming |
+| `aggregators` | [`consolidacao`](src/aggregators/consolidacao.md) | Faltantes, duplicados e filhos da base de um ano |
+| `aggregators` | [`atos_pge`](src/aggregators/atos_pge.md) | Movimentações do Atos da PGE, num índice em disco |
+| `aggregators` | [`exportador_gpdr`](src/aggregators/exportador_gpdr.md) | JSONL consolidado → array JSON, em streaming |
 
-**Scripts:** [`menu`](scripts/menu.md) (ponto de entrada) e [`spike_seletores`](scripts/spike_seletores.md) (diagnóstico, sem gravar nada).
+**Scripts:** [`menu`](scripts/menu.md) (ponto de entrada) e [`spike_seletores`](scripts/spike_seletores.md) (diagnóstico, sem gravar nada). **Scripts finais:** [`preparar_base_final`](scripts_final/preparar_base_final.md) (base de um ano na estrutura do GPDR).
 
 **Guias:** [configuração do ambiente](guias/configuracao_ambiente.md) e [padrão de logging](guias/logging_padrao.md).
 
@@ -132,4 +142,4 @@ uv run mkdocs build --strict        # falha em qualquer link quebrado
 
 ## Estado atual
 
-Não há suíte de testes automatizados. O [backlog de testes](backlog_testes.md) lista as 97 invariantes que valeria fixar, com a ordem sugerida por risco/custo, e [`spike_seletores`](scripts/spike_seletores.md) já produz os fixtures — os HTMLs de `data/spike/` são páginas reais do e-SAJ, e a maior parte da camada de scraping é composta de funções puras sobre string.
+Não há suíte de testes automatizados. O [backlog de testes](backlog_testes.md) lista as 98 invariantes que valeria fixar, com a ordem sugerida por risco/custo, e [`spike_seletores`](scripts/spike_seletores.md) já produz os fixtures — os HTMLs de `data/spike/` são páginas reais do e-SAJ, e a maior parte da camada de scraping é composta de funções puras sobre string.

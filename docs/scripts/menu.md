@@ -3,7 +3,7 @@
 | Metadado            | Valor                                      |
 |---------------------|--------------------------------------------|
 | Data de criação     | 2026-08-10                                 |
-| Data de atualização | 2026-09-21                                 |
+| Data de atualização | 2026-10-29                                 |
 | Responsável(is)     | @alexandrehiero                            |
 | Dependências principais | `tqdm`, `concurrent.futures`, e todos os módulos de `src/` |
 
@@ -23,6 +23,8 @@ Este é o único ponto de entrada do projeto. Tudo o que os módulos de `src/` s
 | 2 | Recoleta apenas os `erro_transitorio` | Sim |
 | 3 | Coleta os órfãos listados em `orfaos.txt` | Sim |
 | 4 | Reprojeta vínculos, exporta o JSONL, recalcula os órfãos | **Não** |
+| 5 | Reabre (uma vez por banco) e recoleta os sem dado do Colégio Recursal (`9xxx`) e do DEPRE (`0500`) | Sim |
+| 6 | Recoleta a base inteira numa rodada retomável; falha ou resposta pior mantém o registro anterior | Sim |
 | 0 | Sai, fechando o banco | — |
 
 - **O fluxo é 1 → 4 → 3 → 4, e a instrução está dentro do próprio menu** — não num README que ninguém abre. A opção 4 aparece duas vezes porque faz duas coisas: exporta a base **e** recalcula os órfãos. A primeira execução descobre quais pais foram citados e nunca coletados; a 3 os coleta; a segunda 4 os incorpora ao grafo. O ciclo **converge** pelo critério de [`sqlite_store.orfaos`](../src/store/sqlite_store.md).
@@ -34,6 +36,14 @@ Este é o único ponto de entrada do projeto. Tudo o que os módulos de `src/` s
 - **Duas formas de parar, ambas preservando o que foi pago** — o disjuntor (`EsajIndisponivelError`) e o `Ctrl+C` interrompem a submissão de trabalho novo, mas o laço continua consumindo o que está em execução. Cada resultado em voo custou uma requisição contra um portal público.
 - **Sem bruto, o vínculo é `indefinido`, não `sem_vinculo`** — afirmar "não há pai" exige ter olhado, e em segredo de justiça a capa foi negada. Mesma disciplina que separa `sem_dados` de `erro_transitorio`.
 - **Escrita atômica também nos `.txt`** — os arquivos são regeneráveis, mas um truncado é pior que um ausente: a opção 2 leria uma fila incompleta sem qualquer sinal.
+- **A opção 5 conserta bases coletadas antes das rotas novas** — antes do `cposgcr`, um número `9xxx` recebia "não existe" no cpopg e no cposg e virava `sem_dados`, resultado **final** que nenhuma opção voltava a tentar; antes da Consulta de Requisitórios, um `0500` recebia "sem acesso" até estourar o teto e parava em `revisao_manual.txt`. A opção 5 devolve esses registros à fila da opção 2 com as tentativas zeradas (`store.reabrir`) e recoleta os pendentes dessas origens, com o mesmo teto, os mesmos arquivos de falha e um relatório `relatorio_rotas_novas_*.txt`.
+    - **Uma vez por banco e por rota** — `reabrir_rotas_novas`, que o [`preparar_base_final`](../scripts_final/preparar_base_final.md) também chama no banco `faltantes_<ano>`. A rota reaberta vai para `meta` (`rotas_reabertas`). Depois disso, um `sem_dados` dessas origens veio da rota certa e é legítimo; reabrir de novo zeraria também as tentativas de quem falha de verdade, e a fila nunca esvaziaria. As execuções seguintes só recoletam os pendentes. Uma rota nova acrescentada a `ROTAS_NOVAS` é a única reaberta na próxima vez.
+    - **Reabrir antes de coletar, e não coletar direto** — com a reabertura, interromper a 5 deixa o resto na fila normal, visível em `falhas_pendentes.txt` e retomável pela 2 ou pela 5. Enquanto pendentes, esses números somem da base final (`erro_transitorio` não é exportado): é o estado honesto, porque o `sem_dados` anterior era falso.
+- **A opção 6 renova a base sem nunca piorá-la** — a rodada é uma fila no banco (tabela `atualizacao` do [`sqlite_store`](../src/store/sqlite_store.md)) com **todos** os números do banco, lista e órfãos. Interromper e rodar a 6 de novo continua de onde parou; uma rodada nova só começa quando a anterior não tem pendentes, com confirmação, e oferece backup do banco (`store.backup`) antes.
+    - **Falha não toca o registro** — na coleta normal, a falha é gravada em `registro` como `erro_transitorio` de grau 0. Na atualização isso apagaria um `sem_dados` ou conviveria com o `coletado` do mesmo número e, no teto, os dois sairiam no JSONL. Aqui a falha só conta tentativa na fila da rodada, com o mesmo teto da opção 2; no teto, o número sai como `desistido` e o dado anterior fica.
+    - **Resposta menos informativa não substitui** — `coletado` que volta como `sem_dados` ou `segredo_justica` é mantido (`INFORMATIVIDADE` em [`status`](../src/status.md)) e listado como `mantido`, com o motivo, em `atualizacao_nao_atualizados.txt`. Decidir se o processo saiu do ar de fato é trabalho humano, não de um laço.
+    - **A base final só muda na opção 4** — e a 3 entra se os vínculos novos citarem pais ainda sem registro: o fluxo é 6 (até concluir) → 4 → 3 → 4.
+- **`executar_coleta` recebe o gravador** — o laço de workers, disjuntor e `Ctrl+C` é um só; a opção 6 passa um `gravar` próprio e as demais usam o padrão. O parâmetro é opcional para não mudar a chamada de [`preparar_base_final`](../scripts_final/preparar_base_final.md).
 - **`utf-8-sig` na leitura da entrada** — o Excel salva com BOM, e o primeiro número chegaria com três caracteres invisíveis na frente. Com `utf-8` puro o operador veria "1 número inválido" sem entender por quê. A validação de DV e tribunal acontece **antes** de qualquer requisição.
 
 ## Como Executar
@@ -43,6 +53,8 @@ Este é o único ponto de entrada do projeto. Tudo o que os módulos de `src/` s
 uv run python scripts/menu.py iamspe_2026
 uv run python scripts/menu.py            # sem argumento, o script pergunta
 ```
+
+Num notebook que já coletava antes de uma versão nova, siga a [sequência de comandos](../guias/atualizar_notebook.md) (resumo: 5 → 2 se houver falhas → 1 se a lista não terminou → 4).
 
 O nome é sanitizado (`re.sub(r"[^A-Za-z0-9_.-]", "_", nome)`) antes de virar caminho. Antes de rodar, coloque os números — um por linha — em `data/entrada/<nome>.txt`.
 
@@ -66,6 +78,8 @@ export ORQUESTRADOR_DB_DIR=/home/voce/dados_coleta # bash
 | `FALHAS` | `<SAIDA>/falhas_pendentes.txt` | Visão da fila da opção 2 |
 | `REVISAO` | `<SAIDA>/revisao_manual.txt` | Estouraram o teto de tentativas |
 | `INVALIDOS` | `<SAIDA>/numeros_invalidos.txt` | Números rejeitados na leitura, com o motivo |
+| `NAO_ATUALIZADOS` | `<SAIDA>/atualizacao_nao_atualizados.txt` | Mantidos e desistidos da rodada da opção 6, com o motivo |
+| `ROTAS_NOVAS` | `colegio_recursal`, `requisitorio` | Propriedades de `NumeroProcesso` cujas origens a opção 5 reabre |
 | `BANCO` | `<DIR_BANCOS>/<nome>.db` | Checkpoint SQLite |
 
 Todos os caminhos derivados são definidos por `configurar_projeto(nome)`, chamada no início de `main()`.
@@ -74,7 +88,7 @@ Todos os caminhos derivados são definidos por `configurar_projeto(nome)`, chama
 
 O script usa `print()` e `tqdm.write()`, não o módulo `logging` — coerente com o [guia de logging](../guias/logging_padrao.md), que admite `print()` em scripts existentes. Há uma restrição própria: **dentro do laço de coleta, toda saída precisa passar por `tqdm.write`**, senão a linha da barra de progresso é corrompida. É por isso que a opção 4 injeta `log=tqdm.write` nas funções de `src/`, que têm `log=print` como padrão para não depender do `tqdm`.
 
-Os prefixos entre colchetes usam o status como rótulo: `[coletado]`, `[segredo_justica]`, `[erro_transitorio]`, `[erro_persistente]`.
+Os prefixos entre colchetes usam o status como rótulo: `[coletado]`, `[segredo_justica]`, `[erro_transitorio]`, `[erro_persistente]`. Na opção 6, a situação na rodada: `[atualizado]`, `[mantido]`, `[falhou]`, `[desistido]`.
 
 O monitoramento de estado não é feito por log, e sim pelos arquivos regenerados a cada execução mais o resumo impresso ao fim (`total()` e `contagem_por_status()`). A opção 2 grava um relatório com carimbo de tempo, marcado no cabeçalho como **auditoria**, para que ninguém tente editá-lo.
 
@@ -87,12 +101,13 @@ O monitoramento de estado não é feito por log, e sim pelos arquivos regenerado
 - **Entrada salva pelo Excel, com BOM.** Resolvido silenciosamente por `utf-8-sig`.
 - **Números inválidos na lista.** Não interrompem: vão para `numeros_invalidos.txt` com o motivo (sem 20 dígitos, DV inválido, ou fora do TJSP) e a coleta segue com os válidos.
 - **Metade das funções depende de globais preenchidos por `configurar_projeto()`.** `atualizar_arquivos_de_falha`, `escrever_relatorio` e `_mostrar` recebem `store` por parâmetro mas leem caminhos de globais. Não ocorre hoje (só `main()` chama), mas nenhuma é reutilizável fora desse fluxo. Ver [backlog §5](../backlog.md).
-- **A opção 2 reclassifica a origem dos órfãos como `lista`,** e **a opção 3 descarta os números inválidos sem registrá-los.** Ambos em [backlog §5](../backlog.md).
+- **A opção 3 descarta os números inválidos sem registrá-los.** Em [backlog §5](../backlog.md).
+- **A rodada da opção 6 dura tanto quanto a coleta original.** Não há atalho: cada número é uma consulta nova no mesmo ritmo do `Pacer`. A rodada sobrevive a interrupções; o operador só precisa rodar a 6 de novo.
 
 ## Decisões Futuras
 
 - [ ] Migrar `print()`/`tqdm.write()` para `logging` com `FileHandler` — hoje não há registro em arquivo do que aconteceu numa execução longa.
-- [ ] Expor `store.backup(destino)` como opção do menu; o método existe e usa `VACUUM INTO`.
+- [ ] Expor `store.backup(destino)` como opção própria do menu; hoje só a opção 6 o oferece, antes de uma rodada nova.
 - [ ] Permitir ajustar a cadência (`Pacer(minimo, maximo)`) por variável de ambiente.
 - [ ] Opção para forçar a reprojeção (`forcar=True`) sem depender de a `VERSAO_REGRA` ter mudado.
 - [ ] Testes do laço de coleta com um `client` dublê — ver [backlog de testes](../backlog_testes.md).
@@ -130,3 +145,4 @@ O único módulo que **não** passa por aqui é o par de parsers, alcançado ind
 | 2026-08-11 | @alexandrehiero | Criação |
 | 2026-09-04 | @alexandrehiero | Reescrita enxuta (≤150 linhas): narrativa das 10 decisões virou lista de tópicos; código copiado removido; "Pontos em aberto" migrou para o backlog |
 | 2026-09-21 | @alexandrehiero | Cadência 1,1–1,6 s, lida do `Pacer` no cabeçalho do menu; os "Mais" das movimentações ficam fora dela |
+| 2026-10-29 | @alexandrehiero | Opção 5 (reabre e recoleta os sem dado de `9xxx` e `0500`) e opção 6 (rodada retomável de atualização da base); `executar_coleta` recebe `gravar` opcional; a origem dos órfãos deixa de ser reclassificada na recoleta |

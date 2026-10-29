@@ -3,7 +3,7 @@
 | Metadado            | Valor                                      |
 |---------------------|--------------------------------------------|
 | Data de criação     | 2026-08-10                                 |
-| Data de atualização | 2026-10-09                                 |
+| Data de atualização | 2026-10-26                                 |
 | Responsável(is)     | @alexandrehiero                            |
 | Dependências principais | `beautifulsoup4`, e os módulos de `src/scrapers/` |
 
@@ -67,7 +67,7 @@ O fechamento imprime `client.estatisticas()`, o que permite conferir requisiçõ
 
 ## Decisões Futuras
 
-- [ ] Exercitar o fallback `_PADRAO_SECAO_1A` do `cposg` — as capas reais confirmaram o atalho por `id`, mas a varredura de seção pode nunca ter rodado.
+- [x] Exercitar o fallback `_PADRAO_SECAO_1A` do `cposg` — feito em 2026-10-26: o atalho por `id` saiu do portal, e a varredura de seção achou o número em todas as capas reais do TJ e do Colégio Recursal que o têm (ver [`parser_segundo_grau`](../src/scrapers/parser_segundo_grau.md)).
 - [ ] Converter os HTMLs de `data/spike/` em fixtures versionadas para uma suíte de `page_state` e dos parsers.
 - [ ] Modo que leia HTML já salvo em vez de consultar a rede, permitindo reexecutar o diagnóstico após mudar um seletor sem gastar requisição.
 - [ ] Relatório em JSON além do texto, para comparar duas execuções e detectar regressão de seletor.
@@ -79,7 +79,7 @@ O fechamento imprime `client.estatisticas()`, o que permite conferir requisiçõ
 | [`coletor`](../src/scrapers/coletor.md) | `PARSER_POR_GRAU` — o mesmo roteamento da coleta real |
 | [`esaj_client`](../src/scrapers/esaj_client.md) | `EsajClient` com padrões; `estatisticas()` no fechamento |
 | [`exceptions`](../src/scrapers/exceptions.md) | `EsajError` capturada por grau |
-| [`numero_processo`](../src/scrapers/numero_processo.md) | `tentar`, e o relatório de `origem`/`dv_valido`/`graus_a_tentar`/`requisitorio` |
+| [`numero_processo`](../src/scrapers/numero_processo.md) | `tentar`, o relatório de `origem`/`dv_valido`/`graus_a_tentar`/`requisitorio`/`colegio_recursal` e `instancia(grau)` no título de cada grau |
 | [`page_state`](../src/scrapers/page_state.md) | `ClassificadorPagina`, `escolher_na_selecao`, `verificar_identidade` |
 | [`parser_base`](../src/scrapers/parser_base.md) | `SELETORES_SITUACAO` e `ROTULOS_DISTRIBUICAO`, auditados nos relatórios |
 
@@ -103,3 +103,4 @@ Não importa nada de `store/`, `transformers/` nem `aggregators/` — o spike pa
 | 2026-09-04 | @alexandrehiero | Reescrita enxuta (≤150 linhas): narrativa das 8 decisões virou lista de tópicos; código copiado removido; "Pontos em aberto" migrou para o backlog |
 | 2026-09-21 | @alexandrehiero | Cadência padrão 1,1–1,6 s; limitação do layout novo: o spike não clica em "Exibir movimentações" |
 | 2026-10-09 | @alexandrehiero | Cabeçalho do diagnóstico informa `requisitório`; número de origem `0500` é consultado pela Consulta de Requisitórios, por `client.buscar` |
+| 2026-10-26 | @alexandrehiero | Cabeçalho informa `colégio recursal` e cada grau mostra a instância consultada; número de origem `9xxx` tem o grau 2 consultado no `cposgcr`; fallback `_PADRAO_SECAO_1A` dado como exercitado |

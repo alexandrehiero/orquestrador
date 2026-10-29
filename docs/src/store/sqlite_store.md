@@ -3,7 +3,7 @@
 | Metadado            | Valor                                      |
 |---------------------|--------------------------------------------|
 | Data de criação     | 2026-08-10                                 |
-| Data de atualização | 2026-09-21                                 |
+| Data de atualização | 2026-10-29                                 |
 | Responsável(is)     | @alexandrehiero                            |
 | Dependências principais | `sqlite3`, `json`, `pathlib` (biblioteca padrão) |
 
@@ -31,7 +31,14 @@ Três motivos sustentam SQLite em vez de arquivos soltos: transação (interrup�
     - **Ler o lote antes de escrever** — `UPDATE` na tabela que um `SELECT` itera tem comportamento indefinido no SQLite; o `.fetchall()` de 500 linhas elimina a questão.
     - **Só grava o que mudou** — preserva o sentido de `atualizado_em`. Quando grava, reescreve também `bruto["observacoes"]`, senão o tipo novo conviveria com as observações da regra antiga.
     - **A reprojeção vem antes do export** — `orfaos()` e o mapa de filhos leem as colunas; exportar antes produziria uma base coerente com a regra **antiga**.
-- **WAL e `synchronous = FULL`** — inverte o trade-off usual porque não há o que ganhar: o gargalo é a rede e o `fsync` cai numa espera de segundos, enquanto cada commit perdido é uma requisição a refazer. `isolation_level=None` deixa os `with self.con:` como as únicas transações.
+- **WAL e `synchronous = FULL`** — inverte o trade-off usual porque não há o que ganhar: o gargalo é a rede e o `fsync` cai numa espera de segundos, enquanto cada commit perdido é uma requisição a refazer.
+- **Transação explícita, `BEGIN IMMEDIATE` em `_transacao()`** — com `isolation_level=None` o `sqlite3` não abre transação sozinho, **nem** dentro de `with self.con:`, que só chama `commit()` no fim. Até 2026-10-29 o módulo usava esse `with` e cada comando era gravado isolado: uma queda entre o `INSERT` e o `DELETE` de `registrar_resultado` deixava as duas linhas do número. `IMMEDIATE` pega o lock de escrita no `BEGIN`; `ROLLBACK` em qualquer `BaseException`, `Ctrl+C` inclusive. Não aninha: nenhum método que a usa chama outro que também a use.
+- **A origem é do número, não de quem o recoleta** — `_gravar_terminal` reaproveita a `origem` de uma linha anterior do mesmo número, como `registrar_erro` já fazia. Sem isso, um órfão que falhou e foi recoletado pela opção 2, 5 ou 6 nascia numa linha nova com a origem de quem chamou.
+- **`reabrir` devolve à fila um desfecho obtido pela rota errada** — põe a linha de grau 0 de volta em `erro_transitorio` com as tentativas zeradas: as falhas anteriores foram da rota, não do processo. Só toca o grau 0, então um número já coletado nunca é reaberto. Quem decide **quais** números é o [`menu`](../../scripts/menu.md) (opção 5), que conhece o `NumeroProcesso`; o store não conhece rotas.
+- **A atualização (opção 6) tem tabela própria, `atualizacao`** — `processo`, `situacao`, `tentativas`, `ultimo_erro`. Fora de `registro` porque a falha de uma atualização não pode tocar o dado já coletado: gravada como `erro_transitorio` de grau 0, apagaria um `sem_dados` ou conviveria com o `coletado` do número e, no teto, os dois sairiam no JSONL. As linhas ficam depois de concluídas, para o relatório; `iniciar_atualizacao` descarta a rodada anterior. Bancos antigos ganham a tabela vazia pelo `CREATE TABLE IF NOT EXISTS`.
+    - **`registrar_atualizacao` substitui TODAS as linhas do número** — não só a de grau 0: se a recoleta observar o processo noutro grau, a linha velha sobraria. Resultado e fila mudam na mesma transação.
+    - **Nunca troca por resultado menos informativo** — `INFORMATIVIDADE` (em [`status`](../status.md)) ordena `coletado > segredo_justica > sem_dados > erros`. Abaixo do anterior, o registro fica e a fila marca `mantido`, com o motivo.
+    - **`registrar_falha_atualizacao` só conta tentativa** — no teto (`TETO_TENTATIVAS_PADRAO`) a situação vira `desistido`, pela mesma razão do `erro_persistente`: a rodada precisa poder terminar.
 - **A ausência de `FOREIGN KEY` é a decisão, não um esquecimento** — uma FK rejeitaria todo filho cujo pai ainda não foi coletado, que é a definição de órfão; o ciclo 4 → 3 → 4 não teria como começar. A referência pendente é o **insumo** da etapa seguinte.
 - **Recusa a abrir banco em pasta sincronizada** — OneDrive e similares copiam `.db` e `-wal` em momentos diferentes e produzem banco incoerente **sem erro**. A checagem é heurística, com escape via `permitir_pasta_sincronizada=True`.
 - **`iter_exportaveis` é gerador, não lista** — materializar 500 mil registros foi o que inviabilizou o consolidador anterior. O `SELECT` inclui `ultimo_erro` porque a projeção o consome; sem a coluna, a causa da falha nunca chegava ao JSONL apesar de estar no banco.
@@ -56,6 +63,10 @@ Três motivos sustentam SQLite em vez de arquivos soltos: transação (interrup�
 | Uniformizar as três etapas no **par** | Não resolveria: `coletar_um` recebe um número e decide o grau sozinho. A granularidade pedida não existe na coleta. |
 | Declarar `FOREIGN KEY (processo_pai)` | Rejeitaria a gravação de todo filho cujo pai ainda não foi coletado — a definição de órfão. O ciclo 4 → 3 → 4 não teria como começar. |
 | Manter o `PRAGMA foreign_keys = ON` | Sem FK no esquema, o pragma não fazia nada além de sugerir uma garantia inexistente a quem lesse o código. |
+| `with self.con:` como transação | Com `isolation_level=None` não abre transação nenhuma — cada comando era gravado sozinho. |
+| Atualização gravando a falha em `registro`, como a coleta | Apagaria um `sem_dados` ou duplicaria um `coletado` no JSONL ao chegar ao teto. |
+| Atualização marcada por `atualizado_em` mais novo que o início da rodada | A reprojeção também escreve `atualizado_em`: uma opção 4 no meio da rodada marcaria tudo como atualizado. E não teria onde contar as tentativas. |
+| Atualização sempre substituindo pelo resultado novo | Um tropeço do e-SAJ que respondesse "não existe" apagaria a capa coletada semanas antes. |
 | `iter_exportaveis` devolvendo lista | Materializar todos os registros em memória foi o que inviabilizou o consolidador anterior. |
 | Omitir `ultimo_erro` do `SELECT` de export | A projeção consome a chave. Sem ela, todo `erro_persistente` sai da base final com a frase genérica e sem a causa, que está no banco. |
 | Deixar o vínculo só na coleta e recoletar quando a regra mudar | Gastaria requisições para reprocessar dado que já está no banco — e para `segredo_justica` a recoleta nem traria conteúdo novo. |
@@ -78,7 +89,7 @@ Três motivos sustentam SQLite em vez de arquivos soltos: transação (interrup�
 - **`numeros_finalizados()` devolve números, não pares.** É a granularidade escolhida para o ciclo, não uma inconsistência: a coleta não sabe operar por par.
 - **Um pai que existe só no OUTRO grau vira referência a um nó ausente.** O JSONL fica com um `processo_pai` que nenhum `_id` resolve; o diagnóstico sai em `orfaos_diagnostico.txt`, com `graus_citados`.
 - **A primeira reprojeção altera registros de erro já publicados.** Linhas com `bruto` nulo recebem `tipo_sem_bruto`, então `tipo_vinculo` passa de `NULL` a `indefinido` — e `erro_persistente` é exportável.
-- **`backup()` existe mas nenhum script o chama.** Usa `VACUUM INTO`; depende de o pesquisador chamá-lo manualmente.
+- **`backup()` só é chamado pela opção 6**, antes de uma rodada nova, e por escolha do operador. Usa `VACUUM INTO` e ocupa o mesmo espaço do banco.
 - **O esquema não tem versionamento nem migração.** `CREATE TABLE IF NOT EXISTS` cria o que falta mas não altera o que existe.
 
 ## Exemplo de Uso
@@ -100,7 +111,7 @@ with SqliteStore("C:/dados_coleta/projeto.db") as store:   # levanta PastaSincro
 
 ## Testes e Validação
 
-Não há suíte automatizada. A validação em uso é operacional: o `menu` imprime `total()` e `contagem_por_status()` ao fim de cada execução. O módulo é testável sem rede e sem arquivo com `SqliteStore(":memory:")`. As 15 invariantes que valeria fixar estão no [backlog de testes](../../backlog_testes.md).
+Não há suíte automatizada. A validação em uso é operacional: o `menu` imprime `total()` e `contagem_por_status()` ao fim de cada execução. O módulo é testável sem rede e sem arquivo com `SqliteStore(":memory:")`. As 22 invariantes que valeria fixar estão no [backlog de testes](../../backlog_testes.md).
 
 ## Histórico de Modificações
 
@@ -111,3 +122,4 @@ Não há suíte automatizada. A validação em uso é operacional: o `menu` impr
 | 2026-08-11 | @alexandrehiero | `reprojetar_vinculos`: a coluna de vínculo deixa de exigir recoleta para ser corrigida |
 | 2026-09-04 | @alexandrehiero | Reescrita enxuta (≤150 linhas). Corrigidas três afirmações que o código já contradizia: a reprojeção **tem** guarda por versão, **reescreve** `bruto["observacoes"]`, e sua assinatura inclui `versao` e `forcar` |
 | 2026-09-21 | @alexandrehiero | Cadência citada atualizada para 1,1–1,6 s |
+| 2026-10-29 | @alexandrehiero | `_transacao()`: o `with self.con:` não abria transação em autocommit. Origem preservada na recoleta; `reabrir` (opção 5); tabela `atualizacao` e seus métodos (opção 6) |

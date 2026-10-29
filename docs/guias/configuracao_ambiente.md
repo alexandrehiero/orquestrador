@@ -44,7 +44,7 @@ uv run python
 uv run python -m src.scrapers.numero_processo
 ```
 
-O `<nome_do_projeto>` determina **todos** os caminhos de entrada e saída — um projeto é uma lista, um banco e uma pasta de saída. Bases diferentes com processos em comum não interferem uma na outra. Ver [`scripts/menu`](../scripts/menu.md).
+O `<nome_do_projeto>` determina **todos** os caminhos de entrada e saída — um projeto é uma lista, um banco e uma pasta de saída. Bases diferentes com processos em comum não interferem uma na outra. Ver [`scripts/menu`](../scripts/menu.md). Num computador que já coleta, depois de uma versão nova do código, siga a [sequência de comandos](atualizar_notebook.md).
 
 ## Dados locais
 
@@ -61,9 +61,23 @@ Coloque os dados em `data/`. Nem tudo ali é ignorado pelo Git: a **lista de ent
 | `data/saida/<projeto>/falhas_pendentes.txt` | Fila da opção 2 | Não |
 | `data/saida/<projeto>/revisao_manual.txt` | Estouraram o teto de tentativas | Não |
 | `data/saida/<projeto>/numeros_invalidos.txt` | Números rejeitados na leitura, com o motivo | Não |
+| `data/saida/<projeto>/relatorio_rotas_novas_<data>.txt` | Desfecho de cada número recoletado pela opção 5 | Não |
+| `data/saida/<projeto>/atualizacao_nao_atualizados.txt` | Opção 6: registros mantidos ou desistidos, com o motivo | Não |
 | `data/spike/<numero>_g<grau>.html` | HTML salvo pelo diagnóstico de seletores | Não |
 
 Os arquivos de `data/saida/` são **visões regeneradas** a cada execução — o banco é a fonte da verdade. Apagar qualquer um deles não perde trabalho.
+
+A base final de um ano ([`preparar_base_final`](../scripts_final/preparar_base_final.md)) usa mais estas fontes, todas fora do Git (`data/` e `data_final/` estão no `.gitignore`):
+
+| Caminho | Uso | De onde vem |
+|---------|-----|-------------|
+| `data/por_ano/processos_tjsp_<ano>.txt` | O que a coleta do ano devia ter respondido | Lista da PGE, dividida por ano |
+| `data/processos_PGE.json` | Movimentações do Atos da PGE (9 GB) | O `processos.json` do GPDR |
+| `data/ipca_mensal.csv` | IPCA número-índice, tabela 1737 do SIDRA | O mesmo arquivo do GPDR |
+| `data/unidades_foro_tjsp.md` | Código `OOOO` do CNJ → foro (Resolução TJSP nº 65/2008) | Copiado de `Codigos_dados_GPDR/data/` |
+| `data_final/JSONL_final/base_final_<ano>.jsonl` | Base do ano, entrada do script | Copiado à mão de `data/saida/<projeto>/` |
+| `data_final/JSON_final/base_final_<ano>.json` | Base final na estrutura do GPDR, + `.meta.json` | Gerado |
+| `data_final/auditoria/<ano>/` | Faltantes, duplicados, órfãos, `sem_dados` de rota nova e linhas removidas | Gerado |
 
 ## Variáveis de ambiente
 

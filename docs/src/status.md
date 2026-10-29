@@ -3,13 +3,13 @@
 | Metadado            | Valor                                      |
 |---------------------|--------------------------------------------|
 | Data de criação     | 2026-08-10                                 |
-| Data de atualização | 2026-09-04                                 |
+| Data de atualização | 2026-10-29                                 |
 | Responsável(is)     | @alexandrehiero                            |
 | Dependências principais | nenhuma — módulo folha, sem imports do projeto |
 
 ## Contexto e Motivação
 
-Este é o menor módulo do projeto e não executa nada: são doze constantes e a docstring que explica por que elas precisam morar num lugar só.
+Este é o menor módulo do projeto e não executa nada: são as constantes do vocabulário e a docstring que explica por que elas precisam morar num lugar só.
 
 Antes existiam **três declarações independentes** das mesmas strings, em `coletor`, `sqlite_store` e `projecao`. Vale seguir o modo de falha até o fim, porque ele é característico do projeto inteiro. As três cópias não quebram nada enquanto concordam — e concordavam. O problema é o dia em que uma muda: nenhum import falha, nenhuma exceção sobe, nenhum teste acusaria (não há testes). O coletor grava `"segredo_justica"`, o store aceita porque a string está na sua própria lista, e a projeção — com a terceira cópia, agora divergente — não reconhece o valor, cai no `else` e escreve no JSONL que o processo deu **erro persistente**.
 
@@ -23,6 +23,8 @@ O resultado é um registro plausível, internamente consistente e factualmente e
 - **`STATUS_TERMINAIS` e `STATUS_EXPORTAVEIS` têm nomes diferentes porque respondem a perguntas diferentes** — "isto sai da fila?" e "isto vira linha do JSONL?". Coincidem hoje porque `erro_transitorio` é o único status que não é resultado de nada: é fila de trabalho, e um processo em fila não tem o que exportar.
 - **`TETO_TENTATIVAS_PADRAO` mora aqui, não no `sqlite_store`** — é a única constante que não é uma string de status, e a exceção se justifica: o número **define** quando `erro_transitorio` vira `erro_persistente`. Sem ele o vocabulário teria os dois estados e não a aresta entre eles. Que a transição seja um `UPDATE` no SQLite é coincidência de implementação; a regra é de domínio. É também o que fecha o ciclo aberto pelas decisões conservadoras do resto do pipeline: `_capa_suspeita` reprova capas legítimas de propósito, e isso só é sustentável porque o falso positivo tem saída em cinco tentativas.
 - **`GRAU_INDETERMINADO = 0`, nunca `NULL`** — o SQLite **aceita** `NULL` em PRIMARY KEY, e como `NULL != NULL` a chave `(processo, grau)` deixaria de barrar duplicatas exatamente nos registros sem observação, que são os mais reprocessados. O sentinela `0` é um valor real: compara, indexa e colide como qualquer outro.
+- **`INFORMATIVIDADE` ordena o que cada status diz sobre o processo** — `coletado > segredo_justica > sem_dados > erros`. A atualização da base (opção 6 do [`menu`](../scripts/menu.md)) nunca troca um resultado por outro abaixo dele: um `coletado` que volta como `sem_dados` é mais provavelmente tropeço do e-SAJ do que processo que deixou de existir. Mora aqui pela razão do teto: é regra de transição entre status.
+- **Situações da rodada de atualização, `ATUALIZACAO_*`** — `pendente`, `atualizado`, `mantido`, `desistido`. Vocabulário à parte do status, porque a falha de uma atualização não vira status em `registro`: lá ela apagaria ou duplicaria o dado que a atualização veio renovar. Vivem na tabela `atualizacao` do [`sqlite_store`](store/sqlite_store.md).
 - **Duas origens: `lista` e `orfao`** — um número do arquivo de entrada e um descoberto durante a coleta, como alvo de um vínculo cujo processo não estava na lista. A distinção permite separar a base pedida da base descoberta.
 
 ### Os cinco status, e o que cada um autoriza
@@ -40,9 +42,9 @@ O resultado é um registro plausível, internamente consistente e factualmente e
 | Módulo | Constantes importadas |
 |---|---|
 | `scrapers/coletor.py` | `COLETADO`, `ERRO_TRANSITORIO`, `GRAU_INDETERMINADO`, `SEGREDO_JUSTICA`, `SEM_DADOS` |
-| `store/sqlite_store.py` | as quatro acima, mais `ERRO_PERSISTENTE`, `ORIGEM_LISTA`, `STATUS_EXPORTAVEIS`, `STATUS_TERMINAIS`, `TETO_TENTATIVAS_PADRAO` |
+| `store/sqlite_store.py` | as quatro acima, mais `ERRO_PERSISTENTE`, `ORIGEM_LISTA`, `STATUS_EXPORTAVEIS`, `STATUS_TERMINAIS`, `TETO_TENTATIVAS_PADRAO`, `INFORMATIVIDADE` e os quatro `ATUALIZACAO_*` |
 | `transformers/projecao.py` | `COLETADO`, `ERRO_PERSISTENTE`, `GRAU_INDETERMINADO`, `SEGREDO_JUSTICA`, `SEM_DADOS` |
-| `scripts/menu.py` | `ERRO_TRANSITORIO`, `ORIGEM_LISTA`, `ORIGEM_ORFAO` |
+| `scripts/menu.py` | `ERRO_TRANSITORIO`, `ORIGEM_LISTA`, `ORIGEM_ORFAO` e os quatro `ATUALIZACAO_*` |
 
 São exatamente os três módulos que antes mantinham cópias, mais o script que os orquestra.
 
@@ -95,3 +97,4 @@ Hoje ela devolve apenas as linhas de `src/status.py`. **Qualquer ocorrência nov
 | 2026-08-10 | @alexandrehiero | Criação: extração do vocabulário antes duplicado em `coletor`, `sqlite_store` e `projecao` |
 | 2026-08-10 | @alexandrehiero | `TODOS` removido (constante sem consumidor); `scripts/menu.py` passa a importar `ERRO_TRANSITORIO` daqui, não reexportado pelo `coletor` |
 | 2026-09-04 | @alexandrehiero | Reescrita enxuta (≤150 linhas): narrativa das 7 decisões virou lista de tópicos; os cinco status viraram tabela; invariantes migradas para o backlog de testes |
+| 2026-10-29 | @alexandrehiero | `INFORMATIVIDADE` e as situações `ATUALIZACAO_*` da rodada de atualização (opção 6) |
