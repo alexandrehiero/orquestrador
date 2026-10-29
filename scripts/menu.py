@@ -5,6 +5,9 @@ Menu:
   2 - recoleta apenas os que falharam
   3 - coleta processos citados no relacionamento que não foram coletados
   4 - transforma os dados coletados na estrutura JSON final (local, sem rede)
+  5 - recoleta os sem dado de Colégio Recursal (9xxx) e DEPRE (0500), gravados
+      antes de a coleta conhecer essas rotas
+  6 - recoleta a base inteira e atualiza os registros; falha mantém o anterior
   0 - sai
 
 O BANCO é a fonte da verdade; os .txt são VISÕES regeneradas a cada execução.
@@ -42,7 +45,15 @@ from src.scrapers.coletor import coletar_um
 from src.scrapers.esaj_client import EsajClient, MonitorFalhas, Pacer
 from src.scrapers.exceptions import EsajIndisponivelError
 from src.scrapers.numero_processo import NumeroProcesso
-from src.status import ERRO_TRANSITORIO, ORIGEM_LISTA, ORIGEM_ORFAO
+from src.status import (
+    ATUALIZACAO_DESISTIDA,
+    ATUALIZACAO_FEITA,
+    ATUALIZACAO_MANTIDA,
+    ATUALIZACAO_PENDENTE,
+    ERRO_TRANSITORIO,
+    ORIGEM_LISTA,
+    ORIGEM_ORFAO,
+)
 from src.store.sqlite_store import PastaSincronizadaError, SqliteStore
 from src.transformers.vinculo import INDEFINIDO, VERSAO_REGRA, derivar_vinculo
 
@@ -53,10 +64,12 @@ DIR_BANCOS = Path(os.environ.get("ORQUESTRADOR_DB_DIR") or (DIR_DADOS / "bancos"
 # Definidos por configurar_projeto(). Um PROJETO = um banco + uma saída, para
 # que bases diferentes com processos em comum não interfiram uma na outra.
 ENTRADA = SAIDA = JSONL = ORFAOS = FALHAS = REVISAO = INVALIDOS = BANCO = None
+NAO_ATUALIZADOS = None
 
 
 def configurar_projeto(nome):
     global ENTRADA, SAIDA, JSONL, ORFAOS, FALHAS, REVISAO, INVALIDOS, BANCO
+    global NAO_ATUALIZADOS
     ENTRADA = DIR_DADOS / "entrada" / f"{nome}.txt"
     SAIDA = DIR_DADOS / "saida" / nome
     JSONL = SAIDA / "base_final.jsonl"
@@ -64,6 +77,7 @@ def configurar_projeto(nome):
     FALHAS = SAIDA / "falhas_pendentes.txt"
     REVISAO = SAIDA / "revisao_manual.txt"
     INVALIDOS = SAIDA / "numeros_invalidos.txt"
+    NAO_ATUALIZADOS = SAIDA / "atualizacao_nao_atualizados.txt"
     BANCO = DIR_BANCOS / f"{nome}.db"
 
 
@@ -135,7 +149,25 @@ def ler_numeros(caminho):
     return validos, invalidos
 
 
-def executar_coleta(store, fabrica, numeros, origem, descricao):
+def _vinculo_do_resultado(numero, r):
+    """(bruto, vínculo) prontos para gravar um resultado terminal.
+
+    `tipo` do relacionamento tem UM único escritor: derivar_vinculo. Sem bruto
+    (segredo de justiça, sem dados) o tipo é INDEFINIDO, não sem_vinculo: nunca
+    chegamos a olhar a capa, então "não há sinal de pai" seria afirmação sobre
+    algo que a coleta não observou.
+    """
+    vinc = {"tipo": INDEFINIDO, "processo_pai": None,
+            "processo_pai_grau": None, "observacoes": []}
+    bruto = r.bruto
+    if bruto:
+        vinc = derivar_vinculo(bruto, r.grau, numero)
+        bruto = dict(bruto)
+        bruto["observacoes"] = vinc["observacoes"]
+    return bruto, vinc
+
+
+def executar_coleta(store, fabrica, numeros, origem, descricao, gravar=None):
     """Laço de coleta com pool de workers.
 
     Os workers fazem SÓ rede e parse; quem grava no banco é a thread principal.
@@ -147,6 +179,10 @@ def executar_coleta(store, fabrica, numeros, origem, descricao):
 
     Nenhuma falha de um processo derruba o laço; só o circuit breaker (e-SAJ
     fora do ar / bloqueio) interrompe, de propósito.
+
+    `gravar(numero, resultado)` persiste um resultado e devolve o rótulo do
+    resumo. O padrão é o da coleta (opções 1, 2, 3 e 5), com `origem`; a opção 6
+    passa o seu, que nunca toca o registro numa falha.
     """
     resumo = Counter()
     parada = None
@@ -158,36 +194,22 @@ def executar_coleta(store, fabrica, numeros, origem, descricao):
             return numero, None
         return numero, coletar_um(np, fabrica())
 
-    def gravar(numero, r):
-        if r is None:
-            resumo["invalido"] += 1
-            return
+    def gravar_coleta(numero, r):
         if r.status == ERRO_TRANSITORIO:
             st = store.registrar_erro(numero, r.motivo, origem=origem)
-            resumo[st] += 1
             tqdm.write(f"[{st}] {numero}: {r.motivo}")
-            return
-
-        # `tipo` do relacionamento tem UM único escritor: derivar_vinculo.
-        # Sem bruto (segredo de justiça, sem dados) o tipo é INDEFINIDO, não
-        # sem_vinculo: nunca chegamos a olhar a capa, então "não há sinal de
-        # pai" seria afirmação sobre algo que a coleta não observou.
-        vinc = {"tipo": INDEFINIDO, "processo_pai": None,
-                "processo_pai_grau": None, "observacoes": []}
-        bruto = r.bruto
-        if bruto:
-            vinc = derivar_vinculo(bruto, r.grau, numero)
-            bruto = dict(bruto)
-            bruto["observacoes"] = vinc["observacoes"]
-
+            return st
+        bruto, vinc = _vinculo_do_resultado(numero, r)
         store.registrar_resultado(
             numero, r.grau, r.status, bruto=bruto,
             processo_pai=vinc["processo_pai"],
             processo_pai_grau=vinc["processo_pai_grau"],
             tipo_vinculo=vinc["tipo"], origem=origem,
         )
-        resumo[r.status] += 1
         tqdm.write(f"[{r.status}] {numero} (grau {r.grau})")
+        return r.status
+
+    gravar = gravar or gravar_coleta
 
     pendentes = set()
     fila = iter(numeros)
@@ -210,7 +232,7 @@ def executar_coleta(store, fabrica, numeros, origem, descricao):
                         # esses resultados foram pagos e não podem ser perdidos.
                         parada = str(erro)
                         continue
-                    gravar(numero, r)
+                    resumo["invalido" if r is None else gravar(numero, r)] += 1
                     barra.update(1)
         except KeyboardInterrupt:
             parada = "interrompido pelo usuário (Ctrl+C)"
@@ -287,11 +309,16 @@ def opcao_2(store, fabrica):
     resumo, parada = executar_coleta(
         store, fabrica, pendentes, ORIGEM_LISTA, "Recoletando"
     )
+    _relatorio_recoleta(store, pendentes, "relatorio_recoleta")
+    _mostrar(resumo, parada, store)
 
+
+def _relatorio_recoleta(store, numeros, nome):
+    """Auditoria de uma recoleta (opções 2 e 5): o desfecho de cada número."""
     ainda = {p["processo"] for p in store.numeros_com_erro_transitorio()}
     persist = {p["processo"] for p in store.numeros_com_erro_persistente()}
     linhas = []
-    for numero in pendentes:
+    for numero in numeros:
         if numero in persist:
             linhas.append(f"{numero}\t(falha - excedeu as tentativas)")
         elif numero in ainda:
@@ -300,16 +327,15 @@ def opcao_2(store, fabrica):
             linhas.append(f"{numero}\t(coletado com sucesso)")
 
     caminho = escrever_relatorio(
-        "relatorio_recoleta",
+        nome,
         [f"# Recoleta de {_agora_tag()}",
-         f"# {len(pendentes)} processos tentados.",
+         f"# {len(numeros)} processos tentados.",
          "# Este arquivo é AUDITORIA: não precisa editar, apagar linhas nem",
          f"# renomear. A fila da opção 2 é regenerada em {FALHAS.name}.",
          ""],
         linhas,
     )
     print(f"\nRelatório: {caminho.name}")
-    _mostrar(resumo, parada, store)
 
 
 def opcao_3(store, fabrica):
@@ -365,6 +391,177 @@ def opcao_4(store):
         print("\nNenhum órfão: todo processo citado no relacionamento tem registro.")
 
 
+#: Rotas do e-SAJ que a coleta aprendeu quando já havia bases coletadas. Antes
+#: delas, o Colégio Recursal respondia "não existe" no cpopg e no cposg e virava
+#: sem_dados — resultado FINAL, nunca mais tentado —, e o DEPRE respondia "sem
+#: acesso" até estourar o teto e parar na revisão manual. Chave = propriedade de
+#: NumeroProcesso que reconhece a origem; vai para `meta` quando a rota é
+#: reaberta, então uma rota nova acrescentada aqui é a única reaberta na próxima
+#: execução da opção 5.
+ROTAS_NOVAS = {
+    "colegio_recursal": "Colégio Recursal (foro 9xxx)",
+    "requisitorio": "DEPRE (foro 0500)",
+}
+META_ROTAS = "rotas_reabertas"
+
+
+def rota_nova(numero, rotas=ROTAS_NOVAS):
+    """Chave da rota nova que atende o número, ou None."""
+    np = NumeroProcesso.tentar(numero)
+    return next((r for r in rotas if np and getattr(np, r)), None)
+
+
+def reabrir_rotas_novas(store):
+    """Uma vez por banco e por rota: devolve à fila da opção 2, com as
+    tentativas zeradas, os registros sem dado das origens de ROTAS_NOVAS.
+    Usada pela opção 5 e pelo preparar_base_final (banco `faltantes_<ano>`).
+
+    Por que uma vez só: depois da reabertura, um sem_dados dessas origens já veio
+    da rota certa e é resultado legítimo; reabrir de novo zeraria também as
+    tentativas de quem falha de verdade, e a fila nunca esvaziaria.
+    Devolve quantos registros foram reabertos.
+    """
+    feitas = set(filter(None, (store.ler_meta(META_ROTAS) or "").split(",")))
+    novas = [r for r in ROTAS_NOVAS if r not in feitas]
+    if not novas:
+        return 0
+    numeros, por_rota = [], Counter()
+    for linha in store.numeros_sem_observacao():
+        rota = rota_nova(linha["processo"], novas)
+        if rota:
+            numeros.append(linha["processo"])
+            por_rota[rota, linha["status"]] += 1
+    print("\nRegistros sem dado gravados antes destas rotas:")
+    for rota in novas:
+        detalhe = ", ".join(f"{st} {n}" for (r, st), n in sorted(por_rota.items())
+                            if r == rota)
+        print(f"  {ROTAS_NOVAS[rota]:30} {detalhe or 'nenhum'}")
+    reabertos = store.reabrir(numeros, "reaberto: rota nova do e-SAJ")
+    # A marca vem DEPOIS: uma queda entre as duas só repete a reabertura, que é
+    # idempotente; na ordem inversa, deixaria registros sem reabrir.
+    store.gravar_meta(META_ROTAS, ",".join(sorted(feitas | set(novas))))
+    print(f"{reabertos} reabertos: voltam à fila da opção 2, tentativas zeradas.")
+    return reabertos
+
+
+def opcao_5(store, fabrica):
+    """Reabre (uma vez por banco) os registros sem dado do Colégio Recursal e do
+    DEPRE e recoleta os pendentes dessas origens — nesta e em toda execução
+    seguinte —, como a opção 2: mesmo teto, mesmos arquivos de falha."""
+    reabrir_rotas_novas(store)
+    fila = [p["processo"] for p in store.numeros_com_erro_transitorio()
+            if rota_nova(p["processo"])]
+    if not fila:
+        print("\nNenhum processo do Colégio Recursal ou do DEPRE pendente de coleta.")
+        return
+    print(f"Recoletando {len(fila)} processos do Colégio Recursal e do DEPRE...")
+    resumo, parada = executar_coleta(store, fabrica, fila, ORIGEM_LISTA, "Rotas novas")
+    _relatorio_recoleta(store, fila, "relatorio_rotas_novas")
+    _mostrar(resumo, parada, store)
+    if not parada:
+        print("Rode a opção 4 para levar os dados recuperados à base final.")
+
+
+def _gravar_atualizacao(store):
+    """Gravador da opção 6. A falha conta tentativa na fila da rodada e NÃO toca
+    o registro: o dado anterior continua valendo até chegar um resultado novo."""
+    def gravar(numero, r):
+        if r.status == ERRO_TRANSITORIO:
+            sit = store.registrar_falha_atualizacao(numero, r.motivo)
+            rotulo = "falhou" if sit == ATUALIZACAO_PENDENTE else sit
+            tqdm.write(f"[{rotulo}] {numero}: {r.motivo}")
+            return rotulo
+        bruto, vinc = _vinculo_do_resultado(numero, r)
+        sit = store.registrar_atualizacao(
+            numero, r.grau, r.status, bruto=bruto,
+            processo_pai=vinc["processo_pai"],
+            processo_pai_grau=vinc["processo_pai_grau"],
+            tipo_vinculo=vinc["tipo"],
+        )
+        tqdm.write(f"[{sit}] {numero} ({r.status}, grau {r.grau})")
+        return sit
+    return gravar
+
+
+def _mostrar_atualizacao(resumo, parada, store):
+    _mostrar(resumo, parada, store)
+    nao = store.nao_atualizados()
+    _escrever_atomico(
+        NAO_ATUALIZADOS,
+        ["# A atualização NÃO substituiu estes registros: o dado anterior continua.",
+         "# mantido = o e-SAJ respondeu algo menos informativo que o gravado;",
+         "# desistido = falhou em todas as tentativas da rodada.",
+         "# processo\tsituação\ttentativas\tmotivo"]
+        + [f"{p['processo']}\t{p['situacao']}\t{p['tentativas']}\t{p['ultimo_erro']}"
+           for p in nao],
+    )
+    rod = store.rodada_atualizacao()
+    print(f"\nRodada de atualização iniciada em {rod['iniciada_em']}:")
+    print(f"  atualizados {rod[ATUALIZACAO_FEITA]} | mantidos {rod[ATUALIZACAO_MANTIDA]}"
+          f" | desistidos {rod[ATUALIZACAO_DESISTIDA]}"
+          f" | pendentes {rod[ATUALIZACAO_PENDENTE]} (já falharam: {rod['falharam']})")
+    print(f"Não atualizados: {len(nao)} -> {NAO_ATUALIZADOS.name}")
+    if parada:
+        return
+    if rod[ATUALIZACAO_PENDENTE]:
+        print(f"\nRode a opção 6 de novo para tentar os {rod[ATUALIZACAO_PENDENTE]} "
+              "que falharam.")
+    else:
+        print("\nRodada concluída. Rode a opção 4 para levar os dados novos à base")
+        print("final (e a 3, se ela apontar órfãos novos).")
+
+
+def opcao_6(store, fabrica):
+    """Recoleta TODOS os números do banco, numa rodada retomável.
+
+    A rodada é uma fila no banco (tabela `atualizacao`): interromper e rodar a 6
+    de novo continua de onde parou. Uma rodada nova só começa quando a anterior
+    não tem pendentes, e só com confirmação — oferecendo backup antes.
+
+    O dado coletado nunca fica pior do que estava: uma falha só conta tentativa
+    na fila (mesmo teto da opção 2) e um resultado menos informativo não
+    substitui o anterior; os dois casos saem em NAO_ATUALIZADOS. A base final
+    só muda quando a opção 4 roda.
+    """
+    rodada = store.rodada_atualizacao()
+    if rodada and rodada[ATUALIZACAO_PENDENTE]:
+        print(f"\nRetomando a rodada iniciada em {rodada['iniciada_em']}: "
+              f"{rodada[ATUALIZACAO_PENDENTE]} pendentes "
+              f"({rodada['falharam']} já falharam ao menos uma vez).")
+    else:
+        if rodada:
+            print(f"\nA rodada iniciada em {rodada['iniciada_em']} terminou: "
+                  f"{rodada[ATUALIZACAO_FEITA]} atualizados, "
+                  f"{rodada[ATUALIZACAO_MANTIDA]} mantidos, "
+                  f"{rodada[ATUALIZACAO_DESISTIDA]} desistidos.")
+        total = store.total()
+        if not total:
+            print("\nO banco está vazio. Rode a opção 1 primeiro.")
+            return
+        print(f"\nIsto recoleta TODOS os {total} registros do banco, no mesmo ritmo")
+        print("da coleta original — numa base grande, são dias. Pode ser")
+        print("interrompida e retomada a qualquer momento pela própria opção 6.")
+        print("Um registro só é substituído quando a recoleta dá certo.")
+        if input("Iniciar uma rodada nova? [s/N] ").strip().lower() not in ("s", "sim"):
+            print("Nada foi alterado.")
+            return
+        mb = BANCO.stat().st_size / 1e6
+        if input(f"Fazer backup do banco antes ({mb:.0f} MB)? [S/n] ").strip().lower() \
+                not in ("n", "nao", "não"):
+            print("Copiando o banco...")
+            destino = store.backup(
+                DIR_BANCOS / f"{BANCO.stem}_antes_atualizacao_{_agora_tag()}.db"
+            )
+            print(f"Backup: {destino}")
+        print(f"Rodada nova: {store.iniciar_atualizacao()} processos na fila.")
+
+    resumo, parada = executar_coleta(
+        store, fabrica, store.fila_atualizacao(), None, "Atualizando",
+        gravar=_gravar_atualizacao(store),
+    )
+    _mostrar_atualizacao(resumo, parada, store)
+
+
 MENU = """
 ============================================================
  ORQUESTRADOR DE COLETA - TJSP / e-SAJ
@@ -372,13 +569,17 @@ MENU = """
  COLOQUE O N° DOS PROCESSOS EM "entrada/nome_projeto.txt" 
  E SIGA O PASSO A PASSO A SEGUIR: 
 
- 1 → 4 → 3 (se houver) → 4 de novo. 
+ 1 → 4 → 3 (se houver) → 4 de novo.
  A opção 2 só faz sentido se a 1 reportar falhas.
+ Base antiga, com 9xxx/0500 sem dados: 5 → 4.
+ Renovar a base inteira: 6 (até concluir) → 4 → 3 → 4.
 ============================================================
  1 - Coletar todos os processos da lista
  2 - Recoletar apenas os que falharam
  3 - Coletar processos que aparecem nos relacionamentos
  4 - Transformar os dados coletados na estrutura final
+ 5 - Recoletar Colégio Recursal (9xxx) e DEPRE (0500)
+ 6 - Recoletar e atualizar a base inteira
  0 - Sair
 ------------------------------------------------------------"""
 
@@ -417,14 +618,16 @@ def main():
             if escolha == "4":
                 opcao_4(store)
                 continue
-            if escolha not in ("1", "2", "3"):
+            opcoes = {"1": opcao_1, "2": opcao_2, "3": opcao_3,
+                      "5": opcao_5, "6": opcao_6}
+            if escolha not in opcoes:
                 print("Opção inválida.")
                 continue
             if fabrica is None:
                 # Pacer e monitor criados UMA vez e compartilhados por todos os
                 # workers — é isso que mantém a cadência e o circuito globais.
                 fabrica = fabrica_cliente(Pacer(), MonitorFalhas())
-            {"1": opcao_1, "2": opcao_2, "3": opcao_3}[escolha](store, fabrica)
+            opcoes[escolha](store, fabrica)
     finally:
         store.fechar()
 

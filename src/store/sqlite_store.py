@@ -12,7 +12,7 @@ Chave: (processo, grau). O MESMO número pode existir em 1º e 2º grau — foi 
 colisão dessa chave que embaralhou o relacionamento no pipeline anterior.
 
 Convenção de grau:
-    1 / 2  -> grau OBSERVADO (a página respondeu em cpopg / cposg)
+    1 / 2  -> grau OBSERVADO (a página respondeu em cpopg / cposg ou cposgcr)
     0      -> indeterminado (sem_dados, erro) — projetado como null no JSONL.
               Nunca NULL: SQLite não impede NULL em PRIMARY KEY, e como
               NULL != NULL a chave deixaria de barrar duplicatas.
@@ -24,6 +24,7 @@ local, sem nenhuma requisição nova.
 
 import json
 import sqlite3
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -31,10 +32,15 @@ from pathlib import Path
 # mesmas strings que o coletor e a projeção — três cópias que nada impedia de
 # divergir, e cuja divergência seria silenciosa.
 from ..status import (
+    ATUALIZACAO_DESISTIDA,
+    ATUALIZACAO_FEITA,
+    ATUALIZACAO_MANTIDA,
+    ATUALIZACAO_PENDENTE,
     COLETADO,
     ERRO_PERSISTENTE,
     ERRO_TRANSITORIO,
     GRAU_INDETERMINADO,
+    INFORMATIVIDADE,
     ORIGEM_LISTA,
     SEGREDO_JUSTICA,
     STATUS_EXPORTAVEIS,
@@ -70,6 +76,17 @@ CREATE INDEX IF NOT EXISTS idx_registro_pai ON registro (processo_pai, processo_
 CREATE TABLE IF NOT EXISTS meta (
     chave TEXT PRIMARY KEY,
     valor TEXT
+);
+
+-- Fila da atualização da base (opção 6). Fora de `registro` porque a falha de
+-- uma atualização não pode tocar o dado já coletado; as linhas ficam depois de
+-- concluídas para o relatório da rodada. Bancos antigos ganham a tabela vazia.
+CREATE TABLE IF NOT EXISTS atualizacao (
+    processo      TEXT    PRIMARY KEY,
+    situacao      TEXT    NOT NULL,
+    tentativas    INTEGER NOT NULL DEFAULT 0,
+    ultimo_erro   TEXT,
+    atualizado_em TEXT
 );
 """
 
@@ -130,6 +147,26 @@ class SqliteStore:
         # ter sido coletado — é exatamente essa a definição de órfão. Uma FK
         # rejeitaria a gravação do filho e quebraria o ciclo 4 -> 3 -> 4.
 
+    @contextmanager
+    def _transacao(self):
+        """Transação explícita. Com isolation_level=None o sqlite3 não abre
+        transação sozinho — nem dentro de `with self.con:`, que só chama commit()
+        no fim. Cada comando era gravado isolado: uma queda entre o INSERT e o
+        DELETE de registrar_resultado deixava as duas linhas do número.
+
+        IMMEDIATE pega o lock de escrita já no BEGIN, em vez de descobrir o
+        conflito no meio da transação. Não aninha: nenhum método que a usa chama
+        outro que também a use.
+        """
+        self.con.execute("BEGIN IMMEDIATE")
+        try:
+            yield
+            self.con.execute("COMMIT")
+        except BaseException:
+            if self.con.in_transaction:
+                self.con.execute("ROLLBACK")
+            raise
+
     # --- ciclo de vida -------------------------------------------------------
     def fechar(self):
         if self.con is not None:
@@ -164,34 +201,51 @@ class SqliteStore:
         """
         if status not in STATUS_TERMINAIS:
             raise ValueError(f"Status não terminal em registrar_resultado: {status!r}")
-        with self.con:  # transação
-            self.con.execute(
-                """INSERT INTO registro
-                       (processo, grau, status, tentativas, ultimo_erro, bruto,
-                        processo_pai, processo_pai_grau, tipo_vinculo,
-                        origem, atualizado_em)
-                   VALUES (?, ?, ?, 0, NULL, ?, ?, ?, ?, ?, ?)
-                   ON CONFLICT (processo, grau) DO UPDATE SET
-                       status            = excluded.status,
-                       tentativas        = 0,
-                       ultimo_erro       = NULL,
-                       bruto             = excluded.bruto,
-                       processo_pai      = excluded.processo_pai,
-                       processo_pai_grau = excluded.processo_pai_grau,
-                       tipo_vinculo      = excluded.tipo_vinculo,
-                       atualizado_em     = excluded.atualizado_em""",
-                (
-                    processo, grau, status,
-                    json.dumps(bruto, ensure_ascii=False) if bruto is not None else None,
-                    processo_pai, processo_pai_grau, tipo_vinculo,
-                    origem, _agora(),
-                ),
-            )
+        with self._transacao():
+            self._gravar_terminal(processo, grau, status, bruto, processo_pai,
+                                  processo_pai_grau, tipo_vinculo, origem)
             if grau != GRAU_INDETERMINADO:
                 self.con.execute(
                     "DELETE FROM registro WHERE processo = ? AND grau = ?",
                     (processo, GRAU_INDETERMINADO),
                 )
+
+    def _gravar_terminal(self, processo, grau, status, bruto, processo_pai,
+                         processo_pai_grau, tipo_vinculo, origem):
+        """Upsert de um resultado terminal. Chamar DENTRO de `_transacao()`.
+
+        A origem é de onde o NÚMERO entrou na base, não de quem o recoletou: se
+        ele já tem linha (falha anterior, sem_dados), vale a dela. Sem isso, um
+        órfão recoletado pela opção 2, 5 ou 6 que mudasse de grau nasceria numa
+        linha nova com a origem de quem chamou — o registrar_erro já preservava.
+        """
+        linha = self.con.execute(
+            "SELECT origem FROM registro WHERE processo = ? LIMIT 1", (processo,)
+        ).fetchone()
+        if linha:
+            origem = linha["origem"]
+        self.con.execute(
+            """INSERT INTO registro
+                   (processo, grau, status, tentativas, ultimo_erro, bruto,
+                    processo_pai, processo_pai_grau, tipo_vinculo,
+                    origem, atualizado_em)
+               VALUES (?, ?, ?, 0, NULL, ?, ?, ?, ?, ?, ?)
+               ON CONFLICT (processo, grau) DO UPDATE SET
+                   status            = excluded.status,
+                   tentativas        = 0,
+                   ultimo_erro       = NULL,
+                   bruto             = excluded.bruto,
+                   processo_pai      = excluded.processo_pai,
+                   processo_pai_grau = excluded.processo_pai_grau,
+                   tipo_vinculo      = excluded.tipo_vinculo,
+                   atualizado_em     = excluded.atualizado_em""",
+            (
+                processo, grau, status,
+                json.dumps(bruto, ensure_ascii=False) if bruto is not None else None,
+                processo_pai, processo_pai_grau, tipo_vinculo,
+                origem, _agora(),
+            ),
+        )
 
     def registrar_erro(self, processo, erro, teto_tentativas=TETO_TENTATIVAS_PADRAO,
                        origem=ORIGEM_LISTA):
@@ -202,7 +256,7 @@ class SqliteStore:
 
         Devolve o status resultante.
         """
-        with self.con:
+        with self._transacao():
             linha = self.con.execute(
                 "SELECT tentativas FROM registro WHERE processo = ? AND grau = ?",
                 (processo, GRAU_INDETERMINADO),
@@ -232,12 +286,38 @@ class SqliteStore:
         return linha["valor"] if linha else None
 
     def gravar_meta(self, chave, valor):
-        with self.con:
-            self.con.execute(
-                "INSERT INTO meta (chave, valor) VALUES (?, ?) "
-                "ON CONFLICT (chave) DO UPDATE SET valor = excluded.valor",
-                (chave, valor),
+        with self._transacao():
+            self._escrever_meta(chave, valor)
+
+    def _escrever_meta(self, chave, valor):
+        """Sem transação própria: para gravar a marca junto com o que ela marca."""
+        self.con.execute(
+            "INSERT INTO meta (chave, valor) VALUES (?, ?) "
+            "ON CONFLICT (chave) DO UPDATE SET valor = excluded.valor",
+            (chave, valor),
+        )
+
+    def reabrir(self, numeros, motivo):
+        """Devolve à fila da opção 2 números cujo desfecho SEM observação
+        (sem_dados, erro_*) veio de uma rota do e-SAJ que a coleta ainda não
+        conhecia — ex.: o Colégio Recursal respondia 'não existe' no cpopg e no
+        cposg, e o processo virava sem_dados.
+
+        Zera as tentativas: as falhas anteriores foram da rota errada, não do
+        processo. Só mexe na linha de grau 0 — um número já coletado não é
+        reaberto. Devolve quantas linhas foram reabertas.
+        """
+        agora = _agora()
+        with self._transacao():
+            cur = self.con.executemany(
+                """UPDATE registro
+                      SET status = ?, tentativas = 0, ultimo_erro = ?,
+                          atualizado_em = ?
+                    WHERE processo = ? AND grau = ?""",
+                [(ERRO_TRANSITORIO, str(motivo)[:500], agora, n, GRAU_INDETERMINADO)
+                 for n in numeros],
             )
+        return cur.rowcount
 
     def reprojetar_vinculos(self, derivar, tipo_sem_bruto, versao,
                             forcar=False, log=None):
@@ -278,7 +358,7 @@ class SqliteStore:
             ).fetchall()
             if not lote:
                 break
-            with self.con:
+            with self._transacao():
                 for linha in lote:
                     ultimo = (linha["processo"], linha["grau"])
                     vistos += 1
@@ -350,6 +430,134 @@ class SqliteStore:
                 WHERE status = ?
              ORDER BY processo""",
             (ERRO_PERSISTENTE,),
+        )
+        return [dict(linha) for linha in cur]
+
+    def numeros_sem_observacao(self):
+        """Números com linha de grau 0 — sem_dados ou erro, nenhum dado de capa.
+        São os candidatos a `reabrir` quando a coleta aprende uma rota nova."""
+        cur = self.con.execute(
+            "SELECT processo, status FROM registro WHERE grau = ?",
+            (GRAU_INDETERMINADO,),
+        )
+        return [dict(linha) for linha in cur]
+
+    # --- atualização da base (opção 6) ---------------------------------------
+    def iniciar_atualizacao(self):
+        """Começa uma rodada: TODO número do banco entra na fila como pendente,
+        e a rodada anterior é descartada. Devolve o tamanho da fila."""
+        agora = _agora()
+        with self._transacao():
+            self.con.execute("DELETE FROM atualizacao")
+            cur = self.con.execute(
+                """INSERT INTO atualizacao (processo, situacao, atualizado_em)
+                   SELECT DISTINCT processo, ?, ? FROM registro""",
+                (ATUALIZACAO_PENDENTE, agora),
+            )
+            self._escrever_meta("atualizacao_iniciada_em", agora)
+        return cur.rowcount
+
+    def rodada_atualizacao(self):
+        """Contagem por situação da rodada atual, ou None se nunca houve uma.
+        `falharam` são os pendentes que já falharam ao menos uma vez."""
+        cont = dict(self.con.execute(
+            "SELECT situacao, COUNT(*) FROM atualizacao GROUP BY situacao"
+        ).fetchall())
+        if not cont:
+            return None
+        falharam = self.con.execute(
+            "SELECT COUNT(*) FROM atualizacao WHERE situacao = ? AND tentativas > 0",
+            (ATUALIZACAO_PENDENTE,),
+        ).fetchone()[0]
+        situacoes = (ATUALIZACAO_PENDENTE, ATUALIZACAO_FEITA,
+                     ATUALIZACAO_MANTIDA, ATUALIZACAO_DESISTIDA)
+        return {"iniciada_em": self.ler_meta("atualizacao_iniciada_em"),
+                "falharam": falharam,
+                **{s: cont.get(s, 0) for s in situacoes}}
+
+    def fila_atualizacao(self):
+        """Pendentes da rodada; os que nunca foram tentados vêm primeiro."""
+        cur = self.con.execute(
+            """SELECT processo FROM atualizacao
+                WHERE situacao = ?
+             ORDER BY tentativas, processo""",
+            (ATUALIZACAO_PENDENTE,),
+        )
+        return [linha["processo"] for linha in cur]
+
+    def registrar_atualizacao(self, processo, grau, status, bruto=None,
+                              processo_pai=None, processo_pai_grau=None,
+                              tipo_vinculo=None):
+        """Grava o resultado da RECOLETA de um número que já está na base e o
+        tira da fila da rodada, na mesma transação. Devolve a situação.
+
+        Difere de registrar_resultado em dois pontos:
+          - substitui TODAS as linhas do número, não só a de grau 0: na coleta
+            normal um número tem uma linha só, e se a recoleta o observar noutro
+            grau a linha velha sobraria e o processo sairia duas vezes no JSONL;
+          - nunca troca o registro por um resultado MENOS informativo (ver
+            INFORMATIVIDADE): mantém o anterior e marca a fila como 'mantido',
+            com o motivo, para o relatório da rodada.
+        """
+        if status not in STATUS_TERMINAIS:
+            raise ValueError(f"Status não terminal em registrar_atualizacao: {status!r}")
+        with self._transacao():
+            atuais = [linha["status"] for linha in self.con.execute(
+                "SELECT status FROM registro WHERE processo = ?", (processo,)
+            )]
+            anterior = max(atuais, key=INFORMATIVIDADE.__getitem__, default=None)
+            if anterior and INFORMATIVIDADE[status] < INFORMATIVIDADE[anterior]:
+                situacao = ATUALIZACAO_MANTIDA
+                motivo = (f"o e-SAJ respondeu {status} (grau {grau}); "
+                          f"mantido o {anterior} anterior")
+            else:
+                situacao, motivo = ATUALIZACAO_FEITA, None
+                # Origem é lida antes do DELETE, dentro de _gravar_terminal.
+                self._gravar_terminal(processo, grau, status, bruto, processo_pai,
+                                      processo_pai_grau, tipo_vinculo, ORIGEM_LISTA)
+                self.con.execute(
+                    "DELETE FROM registro WHERE processo = ? AND grau != ?",
+                    (processo, grau),
+                )
+            self.con.execute(
+                """UPDATE atualizacao
+                      SET situacao = ?, ultimo_erro = ?, atualizado_em = ?
+                    WHERE processo = ?""",
+                (situacao, motivo, _agora(), processo),
+            )
+        return situacao
+
+    def registrar_falha_atualizacao(self, processo, erro,
+                                    teto_tentativas=TETO_TENTATIVAS_PADRAO):
+        """A recoleta falhou: o registro em `registro` NÃO é tocado — o dado
+        anterior continua valendo. Só a fila conta a tentativa; ao estourar o
+        teto o número sai dela como 'desistido', pela mesma razão do
+        erro_persistente: a rodada precisa poder terminar. Devolve a situação.
+        """
+        with self._transacao():
+            linha = self.con.execute(
+                "SELECT tentativas FROM atualizacao WHERE processo = ?", (processo,)
+            ).fetchone()
+            tentativas = (linha["tentativas"] if linha else 0) + 1
+            situacao = (ATUALIZACAO_DESISTIDA if tentativas >= teto_tentativas
+                        else ATUALIZACAO_PENDENTE)
+            self.con.execute(
+                """UPDATE atualizacao
+                      SET situacao = ?, tentativas = ?, ultimo_erro = ?,
+                          atualizado_em = ?
+                    WHERE processo = ?""",
+                (situacao, tentativas, str(erro)[:500], _agora(), processo),
+            )
+        return situacao
+
+    def nao_atualizados(self):
+        """Mantidos e desistidos da rodada: os que seguem com o dado anterior."""
+        cur = self.con.execute(
+            """SELECT processo, situacao, tentativas, ultimo_erro
+                 FROM atualizacao
+                WHERE situacao IN (?, ?)
+             ORDER BY situacao, processo""",
+            (ATUALIZACAO_MANTIDA, ATUALIZACAO_DESISTIDA),
         )
         return [dict(linha) for linha in cur]
 

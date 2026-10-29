@@ -41,3 +41,26 @@ GRAU_INDETERMINADO = 0
 #: De onde veio o número.
 ORIGEM_LISTA = "lista"
 ORIGEM_ORFAO = "orfao"
+
+#: Quanto cada status diz sobre o processo. A atualização da base nunca troca um
+#: resultado por outro MENOS informativo: um coletado que volta como sem_dados é
+#: mais provavelmente tropeço do e-SAJ do que processo que deixou de existir, e
+#: substituí-lo apagaria a capa já coletada. Mora aqui pelo mesmo motivo do teto:
+#: é regra de transição entre status, não detalhe de persistência.
+INFORMATIVIDADE = {
+    COLETADO: 3,
+    SEGREDO_JUSTICA: 2,
+    SEM_DADOS: 1,
+    ERRO_PERSISTENTE: 0,
+    ERRO_TRANSITORIO: 0,
+}
+
+#: Situação de um número na fila da atualização da base (opção 6 do menu).
+#: Vocabulário à parte: a falha de uma atualização não vira status em `registro`,
+#: porque ali ela apagaria ou duplicaria o dado que a atualização veio renovar.
+ATUALIZACAO_PENDENTE = "pendente"
+ATUALIZACAO_FEITA = "atualizado"
+#: O e-SAJ respondeu algo menos informativo; o registro anterior foi mantido.
+ATUALIZACAO_MANTIDA = "mantido"
+#: Estourou o teto de tentativas; o registro anterior foi mantido.
+ATUALIZACAO_DESISTIDA = "desistido"
