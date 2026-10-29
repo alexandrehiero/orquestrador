@@ -39,12 +39,35 @@ def chave(processo, grau):
     return f"{processo}__{grau if grau else GRAU_INDETERMINADO}"
 
 
+#: Rótulo que só o contexto põe num polo. No requisitório (precatório, RPV) a
+#: entidade devedora é a única parte passiva, e a sucessora do credor falecido é
+#: quem recebe: ATIVO. Fora dele o sucessor pode ser do réu, então o parser deixa
+#: o rótulo em OUTRO e a regra mora aqui, onde as partes são vistas juntas — e
+#: vale para o bruto já coletado, na próxima opção 4, sem recoleta.
+_ROTULO_DEVEDORA_REQUISITORIO = "ent. devedora"
+_ROTULOS_SUCESSOR = {"sucessor", "sucessora"}
+
+
+def _rotulo(parte):
+    return " ".join((parte.get("tipo_parte") or "").split()).rstrip(":").casefold()
+
+
+def _polo(parte, requisitorio):
+    """Polo da parte na estrutura final: o do parser, salvo a regra de contexto."""
+    polo = parte.get("polo")
+    if requisitorio and polo == "OUTRO" and _rotulo(parte) in _ROTULOS_SUCESSOR:
+        return "ATIVO"
+    return polo
+
+
 def _grupo(partes, polo):
     """Achata as partes de um polo em {pessoas, representantes}, com dedup.
     `tipo_parte` (Exeqte, Reqdo...) fica só no bruto, por decisão do projeto."""
+    partes = partes or []
+    requisitorio = any(_rotulo(p) == _ROTULO_DEVEDORA_REQUISITORIO for p in partes)
     pessoas, reps = [], []
-    for p in partes or []:
-        if p.get("polo") != polo:
+    for p in partes:
+        if _polo(p, requisitorio) != polo:
             continue
         if p.get("nome"):
             pessoas.append(p["nome"])

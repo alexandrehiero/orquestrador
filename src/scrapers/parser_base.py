@@ -59,6 +59,8 @@ _ROTULOS_PASSIVO = {
 }
 # 'interessado/interessada' NÃO entram em nenhum dos dois: é rótulo neutro
 # (jurisdição voluntária, terceiros). Vão para polo OUTRO.
+# 'sucessor/sucessora' também ficam em OUTRO aqui: o polo depende de quem foi
+# sucedido. No requisitório é o credor, e quem decide é projecao._polo.
 
 _BLOCK_JUIZ = (
     "vara", "juizado", "foro", "camara", "turma", "colegio", "orgao",
