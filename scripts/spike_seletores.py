@@ -113,10 +113,11 @@ def diagnosticar(numero, client):
         print("  número inválido (não tem 20 dígitos)")
         return
     print(f"  dígitos={np.digitos} | origem={np.origem} | DV válido={np.dv_valido} "
-          f"| graus a tentar={np.graus_a_tentar} | requisitório={np.requisitorio}")
+          f"| graus a tentar={np.graus_a_tentar} | requisitório={np.requisitorio} "
+          f"| colégio recursal={np.colegio_recursal}")
 
     for grau in (1, 2):  # o spike consulta SEMPRE os dois, para comparar
-        print(f"\n-- grau {grau} --")
+        print(f"\n-- grau {grau} ({np.instancia(grau)}) --")
         try:
             html = client.buscar(np, grau)
         except EsajError as erro:

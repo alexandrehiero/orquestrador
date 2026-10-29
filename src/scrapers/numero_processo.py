@@ -6,7 +6,8 @@ Diferenças frente ao pipeline IAMSPE:
   - valida o dígito verificador (ISO 7064 MOD 97-10) — mas NÃO levanta exceção
     por DV inválido: o chamador decide (entrada -> numeros_invalidos.txt;
     relacionamento -> observação). Só o tamanho != 20 é erro duro.
-  - fala em GRAU (1/2), não em instância. 'cpopg'/'cposg' é detalhe do cliente.
+  - fala em GRAU (1/2), não em instância. 'cpopg'/'cposg'/'cposgcr' é detalhe
+    do cliente, traduzido aqui.
 """
 
 import re
@@ -20,6 +21,11 @@ _INSTANCIA_POR_GRAU = {GRAU_PRIMEIRO: "cpopg", GRAU_SEGUNDO: "cposg"}
 
 #: Foro 500 do TJSP: DEPRE (Diretoria de Execuções de Precatórios e Cálculos).
 ORIGEM_DEPRE = "0500"
+
+#: Foros 9xxx do TJSP: Colégios Recursais, o 2º grau dos Juizados Especiais.
+#: Prefixo, não lista: unidades novas (9061) já ficam fora da tabela de 2008.
+PREFIXO_COLEGIO_RECURSAL = "9"
+INSTANCIA_COLEGIO_RECURSAL = "cposgcr"
 
 
 def instancia_do_grau(grau):
@@ -123,11 +129,20 @@ class NumeroProcesso:
         return self.origem == "0000"
 
     @property
+    def colegio_recursal(self):
+        """Origem '9xxx' = Colégio Recursal (2º grau dos Juizados Especiais).
+        No cpopg e no cposg o e-SAJ responde 'Não existem informações
+        disponíveis' — o processo virava sem_dados em silêncio. Só abre na
+        consulta do Colégio Recursal (cposgcr)."""
+        return self.origem.startswith(PREFIXO_COLEGIO_RECURSAL)
+
+    @property
     def graus_a_tentar(self):
-        """Ordem de tentativa. Originário do 2º grau vai direto ao 2º — os demais
-        começam no 1º. O orquestrador só avança para o grau seguinte se o e-SAJ
-        disser NAO_ENCONTRADO explicitamente; erro de rede NUNCA faz avançar."""
-        if self.originario_segundo_grau:
+        """Ordem de tentativa. Originário do 2º grau ou do Colégio Recursal vai
+        direto ao 2º — os demais começam no 1º. O orquestrador só avança para o
+        grau seguinte se o e-SAJ disser NAO_ENCONTRADO explicitamente; erro de
+        rede NUNCA faz avançar."""
+        if self.originario_segundo_grau or self.colegio_recursal:
             return (GRAU_SEGUNDO,)
         return (GRAU_PRIMEIRO, GRAU_SEGUNDO)
 
@@ -138,6 +153,15 @@ class NumeroProcesso:
         e-SAJ responde 'Usuário sem acesso ao processo.'; esses processos só
         abrem pela Consulta de Requisitórios."""
         return self.origem == ORIGEM_DEPRE
+
+    def instancia(self, grau):
+        """Instância do e-SAJ que atende ESTE número no grau dado — busca,
+        detalhe e movimentações. O Colégio Recursal tem a mesma capa e o mesmo
+        formulário do cposg, em outro endereço (conferido em 2026-10-26); os
+        demais números seguem `instancia_do_grau`."""
+        if self.colegio_recursal and grau == GRAU_SEGUNDO:
+            return INSTANCIA_COLEGIO_RECURSAL
+        return instancia_do_grau(grau)
 
     def params_via(self, grau):
         """O que a via de consulta exige em TODA página do processo — busca e
@@ -153,7 +177,7 @@ class NumeroProcesso:
     # --- params de busca -----------------------------------------------------
     def params_busca(self, grau):
         """Query string do search.do. ÚNICO ponto a ajustar se o e-SAJ mudar."""
-        instancia = instancia_do_grau(grau)
+        instancia = self.instancia(grau)
         if instancia == "cpopg":
             return {
                 "conversationId": "",
@@ -166,6 +190,7 @@ class NumeroProcesso:
                 "dadosConsulta.valorConsulta": "",
                 **self.params_via(grau),
             }
+        # cposg e cposgcr: o mesmo formulário, campo a campo.
         return {
             "conversationId": "",
             "cbPesquisa": "NUMPROC",

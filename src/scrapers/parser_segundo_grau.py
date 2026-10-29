@@ -1,4 +1,5 @@
-"""Parser da capa de 2º grau (cposg).
+"""Parser da capa de 2º grau (cposg). Serve também à do Colégio Recursal
+(cposgcr), que tem o mesmo layout.
 
 Diferenças frente ao 1º grau:
   - Não existe 'Juiz'; por decisão do projeto, o RELATOR ocupa o campo juiz.

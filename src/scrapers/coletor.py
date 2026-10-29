@@ -48,7 +48,8 @@ PARSER_POR_GRAU = {P.GRAU: P for P in (ParserPrimeiroGrau, ParserSegundoGrau)}
 ResultadoColeta = namedtuple("ResultadoColeta", "status grau bruto motivo")
 
 # Layout novo (set/2026): a capa traz o botão 'Exibir movimentações' e o código
-# interno do processo num script — cpopg e cposg com sintaxes diferentes.
+# interno do processo num script — cpopg e cposg com sintaxes diferentes (o
+# cposgcr usa a do cposg).
 _CODIGO_MOVIMENTACOES = re.compile(
     r"codigoProcesso:\s*'([^']+)'|cdProcessoMovimentacoes\s*=\s*'([^']+)'"
 )
@@ -86,7 +87,7 @@ def _capa_suspeita(completude):
     return None
 
 
-def _exibir_movimentacoes(html, grau, client):
+def _exibir_movimentacoes(html, np, grau, client):
     """Reproduz o clique em 'Exibir movimentações' e depois em 'Mais' até a
     última página, e insere tudo no contêiner vazio, como fazem o `.html()` e o
     `.append()` da página. O parser lê as movimentações de uma vez no fim.
@@ -102,7 +103,7 @@ def _exibir_movimentacoes(html, grau, client):
 
     paginas, cursor = [], None
     while True:  # clica em 'Mais' até acabar
-        pagina = client.carregar_movimentacoes(codigo, grau, cursor)
+        pagina = client.carregar_movimentacoes(codigo, np, grau, cursor)
         recusa = recusa_movimentacoes(pagina)
         if recusa:
             raise EsajError(
@@ -192,7 +193,7 @@ def coletar_um(np, client):
                 )
 
             try:
-                html = _exibir_movimentacoes(html, grau, client)
+                html = _exibir_movimentacoes(html, np, grau, client)
             except EsajError as erro:  # rede, recusa do e-SAJ ou paginação sem fim
                 return _erro(f"falha ao exibir movimentações (grau {grau}): {erro}", grau)
 

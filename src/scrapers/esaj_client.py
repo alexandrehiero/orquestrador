@@ -13,7 +13,8 @@ Diferenças frente ao pipeline IAMSPE:
   - CIRCUIT BREAKER: N requisições seguidas falhando aborta a execução. Sem ele,
     uma queda do e-SAJ faz a fila inteira consumir ~12s por número (3 tentativas
     + backoff) e marcar tudo como falha — descoberto só horas depois.
-  - API por GRAU (1/2), não por instância ('cpopg'/'cposg').
+  - API por GRAU (1/2), não por instância ('cpopg'/'cposg'/'cposgcr'): quem
+    traduz é o NumeroProcesso, porque a instância depende também do número.
 """
 
 import random
@@ -28,7 +29,6 @@ except ImportError:  # versões antigas
     from curl_cffi.requests.errors import RequestsError as _ErroBiblioteca
 
 from .exceptions import EsajIndisponivelError, EsajRequisicaoError
-from .numero_processo import instancia_do_grau
 
 # NÃO definimos User-Agent manualmente. O `impersonate` do curl_cffi já monta o
 # conjunto COMPLETO de headers do navegador escolhido — UA inclusive — junto com
@@ -215,40 +215,41 @@ class EsajClient:
         este orquestrador existe para resolver. Só um NAO_ENCONTRADO explícito
         autoriza avançar de grau.
         """
-        url = f"{self.BASE}/{instancia_do_grau(grau)}/search.do"
+        url = f"{self.BASE}/{numero_processo.instancia(grau)}/search.do"
         return self._get(url, params=numero_processo.params_busca(grau))
 
     def abrir_detalhe(self, href_ou_codigo, numero_processo, grau):
         """Abre a página de capa. Aceita href completo, path relativo ou o
         `processo.codigo` interno do SAJ (opaco, ex.: '1H000AX8O0000').
 
-        O href da tela de seleção já traz os parâmetros da via (inclusive o da
-        Consulta de Requisitórios); o código opaco não traz nada, então eles vêm
-        do `numero_processo`. Sem isso, um processo do DEPRE aberto pelo código
-        responderia 'Usuário sem acesso ao processo.'"""
+        O href da tela de seleção já traz a instância e os parâmetros da via
+        (inclusive o da Consulta de Requisitórios); o código opaco não traz
+        nada, então eles vêm do `numero_processo`. Sem isso, um processo do DEPRE
+        aberto pelo código responderia 'Usuário sem acesso ao processo.', e um
+        do Colégio Recursal seria procurado no cposg."""
         alvo = str(href_ou_codigo)
         if alvo.startswith("http"):
             return self._get(alvo)
         if alvo.startswith("/"):
             return self._get(self.BASE + alvo)
-        url = f"{self.BASE}/{instancia_do_grau(grau)}/show.do"
+        url = f"{self.BASE}/{numero_processo.instancia(grau)}/show.do"
         params = {"processo.codigo": alvo, **numero_processo.params_via(grau)}
         return self._get(url, params=params)
 
-    def carregar_movimentacoes(self, codigo, grau, cursor=None):
+    def carregar_movimentacoes(self, codigo, numero_processo, grau, cursor=None):
         """Equivale ao clique em 'Exibir movimentações' (sem cursor) ou em 'Mais'
         (com o cursor da página anterior): o e-SAJ deixou de pôr as
         movimentações no HTML da capa e passou a carregá-las por AJAX, 5 por vez.
-        O nome do parâmetro difere entre cpopg e cposg. Só funciona na MESMA
-        sessão que abriu a capa — sem ela, o e-SAJ devolve mensagem de erro. Na
-        Consulta de Requisitórios é igual: quem libera é a capa aberta com o
-        parâmetro da via, não esta chamada.
+        O nome do parâmetro difere entre cpopg e cposg (o cposgcr usa o do
+        cposg). Só funciona na MESMA sessão que abriu a capa — sem ela, o e-SAJ
+        devolve mensagem de erro. Na Consulta de Requisitórios é igual: quem
+        libera é a capa aberta com o parâmetro da via, não esta chamada.
 
         O 'Exibir' passa pela cadência; os 'Mais' saem sem espera, por decisão
         do projeto. Se o e-SAJ recusar por excesso, a recusa vira
         erro_transitorio no coletor — nunca lista parcial."""
         param = "processo.codigo" if grau == 1 else "cdProcesso"
-        url = f"{self.BASE}/{instancia_do_grau(grau)}/carregarMovimentacoesAjax.do"
+        url = f"{self.BASE}/{numero_processo.instancia(grau)}/carregarMovimentacoesAjax.do"
         params = {param: codigo}
         if cursor:
             params["cursor"] = cursor
